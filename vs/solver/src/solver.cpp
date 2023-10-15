@@ -319,246 +319,6 @@ struct LocalJudge : Judge {
 
 };
 
-
-struct Solver;
-using SolverPtr = std::shared_ptr<Solver>;
-struct Solver {
-
-    JudgePtr judge;
-
-    Timer timer;
-
-    const int N;
-    const int D;
-    const int Q;
-
-    std::mt19937_64 engine;
-    std::exponential_distribution<> dist;
-    double thresh;
-
-    std::vector<std::vector<int>> Ls, Rs;
-    std::string cmps;
-
-    Solver(JudgePtr judge_) : judge(judge_), N(judge->N), D(judge->D), Q(judge->Q) {
-        dist = std::exponential_distribution<>(1e-5);
-        thresh = 1e5 * N / D;
-    }
-
-    std::vector<int> create_weights() {
-        std::vector<int> ws(N);
-        for (int i = 0; i < N; i++) {
-            while (true) {
-                double w = dist(engine);
-                if (w > thresh) continue;
-                ws[i] = std::max(1, (int)round(w));
-                break;
-            }
-        }
-        return ws;
-    }
-
-    int compute_score(const std::vector<int>& ws) const {
-        int score = 0;
-        for (int i = 0; i < Q; i++) {
-            int lsum = 0, rsum = 0;
-            for (int l : Ls[i]) lsum += ws[l];
-            for (int r : Rs[i]) rsum += ws[r];
-            char c = (lsum < rsum) ? '<' : ((lsum == rsum) ? '=' : '>');
-            score += c == cmps[i];
-        }
-        return score;
-    }
-
-    double calc_var(const std::vector<int>& ws, const std::vector<int>& ds) const {
-        std::vector<int> ts(D);
-        for (int i = 0; i < N; i++) {
-            ts[ds[i]] += ws[i];
-        }
-        double sum = 0, sqsum = 0;
-        for (auto t : ts) {
-            if (t == 0) return -1.0; // invalid
-            sum += t;
-            sqsum += double(t) * t;
-        }
-        double mean = sum / ts.size();
-        return sqsum / ts.size() - mean * mean;
-    }
-
-    std::vector<int> grouping(const std::vector<int>& ws, Xorshift& rnd, const double duration) const {
-
-        std::vector<int> ds(N);
-        for (int i = 0; i < N; i++) ds[i] = i % D;
-
-        auto cost = calc_var(ws, ds);
-        while (timer.elapsed_ms() < duration) {
-            int r = rnd.next_int(2);
-            if (r == 0) {
-                // swap
-                int i = rnd.next_int(N), j;
-                do {
-                    j = rnd.next_int(N);
-                } while (ds[i] == ds[j]);
-                std::swap(ds[i], ds[j]);
-                auto ncost = calc_var(ws, ds);
-                if (ncost < 0 || cost < ncost) {
-                    std::swap(ds[i], ds[j]);
-                }
-                else {
-                    cost = ncost;
-                    dump(cost);
-                }
-            }
-            else {
-                // change
-                int i = rnd.next_int(N);
-                int pd = ds[i];
-                int d;
-                do {
-                    d = rnd.next_int(D);
-                } while (d == pd);
-                ds[i] = d;
-                auto ncost = calc_var(ws, ds);
-                if (ncost < 0 || cost < ncost) {
-                    ds[i] = pd;
-                }
-                else {
-                    cost = ncost;
-                    dump(cost);
-                }
-            }
-        }
-
-        return ds;
-    }
-
-    int solve(const double duration) {
-
-        Timer timer;
-
-        std::vector<int> perm(N);
-        std::iota(perm.begin(), perm.end(), 0);
-
-        Xorshift rnd;
-        while (judge->turn < Q) {
-            //int idx = rnd.next_int(1, N - 1);
-            //int idx = N / 2;
-            int idx = N / 2 + rnd.next_int(5) - 2;
-            std::vector<int> L(perm.begin(), perm.begin() + idx);
-            std::vector<int> R(perm.begin() + idx, perm.end());
-            Ls.push_back(L);
-            Rs.push_back(R);
-            cmps += judge->query(L, R);
-            shuffle_vector(perm, rnd);
-        }
-
-        const double time_phase1_end = duration * 0.75;
-        auto ws = create_weights();
-        int score = compute_score(ws);
-        int loop = 0;
-        while (timer.elapsed_ms() < time_phase1_end) {
-            loop++;
-            if (rnd.next_int(2)) {
-                // swap
-                int i = rnd.next_int(N), j;
-                do {
-                    j = rnd.next_int(N);
-                } while (i == j);
-                std::swap(ws[i], ws[j]);
-                auto nscore = compute_score(ws);
-                if (nscore < score) {
-                    std::swap(ws[i], ws[j]);
-                }
-                else {
-                    score = nscore;
-                }
-            }
-            else {
-                // change
-                int i = rnd.next_int(N);
-                int pw = ws[i];
-                double w = -1.0;
-                while (true) {
-                    w = dist(engine);
-                    if (w > thresh) continue;
-                    ws[i] = std::max(1, (int)round(w));
-                    break;
-                }
-                auto nscore = compute_score(ws);
-                if (nscore < score) {
-                    ws[i] = pw;
-                }
-                else {
-                    score = nscore;
-                }
-            }
-            if (!(loop & 0xFFF)) dump(loop, score);
-        }
-        dump(loop, score, Q);
-
-        auto group = grouping(ws, rnd, duration);
-
-        auto cost = judge->answer(group);
-
-        dump(cost);
-
-        if (auto j = std::dynamic_pointer_cast<FileJudge>(judge)) {
-
-            dump(j->ws);
-            dump(ws);
-        }
-
-        return cost;
-    }
-
-};
-
-
-//void batch_execution() {
-//
-//    constexpr int num_seeds = 100;
-//    int progress = 0;
-//    int score_sum = 0;
-//    int score_min = INT_MAX;
-//    int seed_min = -1;
-//    int score_max = 0;
-//    int seed_max = -1;
-//
-//#pragma omp parallel for num_threads(8)
-//    for (int seed = 0; seed < num_seeds; seed++) {
-//
-//        Input input;
-//
-//#pragma omp critical(crit_sct)
-//        {
-//            std::string input_file(format("../../tools_win/in/%04d.txt", seed));
-//            std::ifstream ifs(input_file);
-//            input = load_input(ifs);
-//        }
-//
-//        auto [score, ans] = solve(input, false, true);
-//
-//#pragma omp critical(crit_sct)
-//        {
-//            progress++;
-//            score_sum += score;
-//            if (chmin(score_min, score)) seed_min = seed;
-//            if (chmax(score_max, score)) seed_max = seed;;
-//            std::cerr << format(
-//                "\rprogress=%3d/%3d, avg=%4.2f, min(%2d)=%4d, max(%2d)=%4d",
-//                progress, num_seeds, (double)score_sum / progress, seed_min, score_min, seed_max, score_max
-//            );
-//
-//            std::string output_file(format("../../tools_win/out/%04d.txt", seed));
-//            std::ofstream ofs(output_file);
-//            ofs << ans;
-//        }
-//    }
-//
-//    std::cerr << '\n';
-//    dump(score_sum * 150.0 / num_seeds);
-//
-//}
-
 namespace NFordJohnson {
 
     constexpr std::uint_fast64_t jacobsthal_diff[] = {
@@ -573,6 +333,19 @@ namespace NFordJohnson {
         6004799503160661u, 12009599006321322u, 24019198012642644u, 48038396025285288u,
         96076792050570576u, 192153584101141152u, 384307168202282304u, 768614336404564608u,
         1537228672809129216u, 3074457345618258432u, 6148914691236516864u
+    };
+
+    constexpr int cap[] = { 0,
+        0, 1, 3, 5, 7, 10, 13, 16, 19, 22,
+        26, 30, 34, 38, 42, 46, 50, 54, 58, 62,
+        66, 71, 76, 81, 86, 91, 96, 101, 106, 111,
+        116, 121, 126, 131, 136, 141, 146, 151, 156, 161,
+        166, 171, 177, 183, 189, 195, 201, 207, 213, 219,
+        225, 231, 237, 243, 249, 255, 261, 267, 273, 279,
+        285, 291, 297, 303, 309, 315, 321, 327, 333, 339,
+        345, 351, 357, 363, 369, 375, 381, 387, 393, 399,
+        405, 411, 417, 423, 429, 436, 443, 450, 457, 464,
+        471, 478, 485, 492, 499, 506, 513, 520, 527, 534
     };
 
     void merge_insertion_sort_impl(JudgePtr judge, std::vector<std::vector<int>>& groups) {
@@ -669,22 +442,17 @@ namespace NFordJohnson {
         groups = main_chain;
     }
 
-    void merge_insertion_sort(JudgePtr judge) {
+    std::vector<int> merge_insertion_sort(JudgePtr judge) {
         const int N = judge->N;
         std::vector<std::vector<int>> groups(N);
         for (int i = 0; i < N; i++) groups[i].push_back(i);
 
         merge_insertion_sort_impl(judge, groups);
 
-        dump(groups);
-        if (auto j = std::dynamic_pointer_cast<LocalJudge>(judge)) {
-            for (auto g : groups) {
-                assert(g.size() == 1);
-                int x = g.front();
-                dump(j->ws[x]);
-            }
-        }
-        dump(judge->turn);
+        std::vector<int> result;
+        for (const auto& g : groups) result.push_back(g.front());
+
+        return result;
     }
 
     void test() {
@@ -695,6 +463,280 @@ namespace NFordJohnson {
     }
 
 }
+
+struct Solver;
+using SolverPtr = std::shared_ptr<Solver>;
+struct Solver {
+
+    JudgePtr judge;
+
+    Timer timer;
+
+    const int N;
+    const int D;
+    const int Q;
+
+    std::mt19937_64 engine;
+    std::exponential_distribution<> dist;
+    double thresh;
+
+    std::vector<std::vector<int>> Ls, Rs;
+    std::string cmps;
+
+    Solver(JudgePtr judge_) : judge(judge_), N(judge->N), D(judge->D), Q(judge->Q) {
+        dist = std::exponential_distribution<>(1e-5);
+        thresh = 1e5 * N / D;
+    }
+
+    std::vector<int> create_weights() {
+        std::vector<int> ws(N);
+        for (int i = 0; i < N; i++) {
+            while (true) {
+                double w = dist(engine);
+                if (w > thresh) continue;
+                ws[i] = std::max(1, (int)round(w));
+                break;
+            }
+        }
+        return ws;
+    }
+
+    std::vector<int> create_weights(const std::vector<int>& ord) {
+        auto ws = create_weights();
+        std::sort(ws.begin(), ws.end());
+        auto nws(ws);
+        for (int i = 0; i < N; i++) nws[ord[i]] = ws[i];
+        return nws;
+    }
+
+    int compute_score(const std::vector<int>& ws) const {
+        int score = 0;
+        for (int i = 0; i < cmps.size(); i++) {
+            int lsum = 0, rsum = 0;
+            for (int l : Ls[i]) lsum += ws[l];
+            for (int r : Rs[i]) rsum += ws[r];
+            char c = (lsum < rsum) ? '<' : ((lsum == rsum) ? '=' : '>');
+            score += c == cmps[i];
+        }
+        return score;
+    }
+
+    double calc_var(const std::vector<int>& ws, const std::vector<int>& ds) const {
+        std::vector<int> ts(D);
+        for (int i = 0; i < N; i++) {
+            ts[ds[i]] += ws[i];
+        }
+        double sum = 0, sqsum = 0;
+        for (auto t : ts) {
+            if (t == 0) return -1.0; // invalid
+            sum += t;
+            sqsum += double(t) * t;
+        }
+        double mean = sum / ts.size();
+        return sqsum / ts.size() - mean * mean;
+    }
+
+    std::vector<int> grouping(const std::vector<int>& ws, Xorshift& rnd, const double duration) const {
+
+        std::vector<int> ds(N);
+        for (int i = 0; i < N; i++) ds[i] = i % D;
+
+        auto cost = calc_var(ws, ds);
+        while (timer.elapsed_ms() < duration) {
+            int r = rnd.next_int(2);
+            if (r == 0) {
+                // swap
+                int i = rnd.next_int(N), j;
+                do {
+                    j = rnd.next_int(N);
+                } while (ds[i] == ds[j]);
+                std::swap(ds[i], ds[j]);
+                auto ncost = calc_var(ws, ds);
+                if (ncost < 0 || cost < ncost) {
+                    std::swap(ds[i], ds[j]);
+                }
+                else {
+                    cost = ncost;
+                    dump(cost);
+                }
+            }
+            else {
+                // change
+                int i = rnd.next_int(N);
+                int pd = ds[i];
+                int d;
+                do {
+                    d = rnd.next_int(D);
+                } while (d == pd);
+                ds[i] = d;
+                auto ncost = calc_var(ws, ds);
+                if (ncost < 0 || cost < ncost) {
+                    ds[i] = pd;
+                }
+                else {
+                    cost = ncost;
+                    dump(cost);
+                }
+            }
+        }
+
+        return ds;
+    }
+
+    int solve(const double duration) {
+
+        Timer timer;
+
+        std::vector<int> ord;
+        if (NFordJohnson::cap[judge->N] <= judge->Q) {
+            // sortable
+            dump("sortable");
+            ord = NFordJohnson::merge_insertion_sort(judge);
+        }
+
+        std::vector<int> perm(N);
+        std::iota(perm.begin(), perm.end(), 0);
+
+        Xorshift rnd;
+        while (judge->turn < Q) {
+            //int idx = rnd.next_int(1, N - 1);
+            //int idx = N / 2;
+            int idx = N / 2 + rnd.next_int(5) - 2;
+            std::vector<int> L(perm.begin(), perm.begin() + idx);
+            std::vector<int> R(perm.begin() + idx, perm.end());
+            Ls.push_back(L);
+            Rs.push_back(R);
+            cmps += judge->query(L, R);
+            shuffle_vector(perm, rnd);
+        }
+        dump(cmps.size());
+
+        std::vector<int> ws;
+
+        const double time_phase1_end = duration * 0.75;
+        if (NFordJohnson::cap[judge->N] <= judge->Q) {
+            ws = create_weights(ord);
+            auto score = compute_score(ws);
+            int loop = 0;
+            while (timer.elapsed_ms() < time_phase1_end) {
+                loop++;
+                auto nws = create_weights(ord);
+                auto nscore = compute_score(nws);
+                if (chmax(score, nscore)) {
+                    ws = nws;
+                    dump(score, cmps.size());
+                }
+            }
+            dump(loop, score, cmps.size());
+        }
+        else {
+            ws = create_weights();
+            int score = compute_score(ws);
+            int loop = 0;
+            while (timer.elapsed_ms() < time_phase1_end) {
+                loop++;
+                if (rnd.next_int(2)) {
+                    // swap
+                    int i = rnd.next_int(N), j;
+                    do {
+                        j = rnd.next_int(N);
+                    } while (i == j);
+                    std::swap(ws[i], ws[j]);
+                    auto nscore = compute_score(ws);
+                    if (nscore < score) {
+                        std::swap(ws[i], ws[j]);
+                    }
+                    else {
+                        score = nscore;
+                    }
+                }
+                else {
+                    // change
+                    int i = rnd.next_int(N);
+                    int pw = ws[i];
+                    double w = -1.0;
+                    while (true) {
+                        w = dist(engine);
+                        if (w > thresh) continue;
+                        ws[i] = std::max(1, (int)round(w));
+                        break;
+                    }
+                    auto nscore = compute_score(ws);
+                    if (nscore < score) {
+                        ws[i] = pw;
+                    }
+                    else {
+                        score = nscore;
+                    }
+                }
+                if (!(loop & 0xFFF)) dump(loop, score);
+            }
+            dump(loop, score, Q);
+        }
+
+        auto group = grouping(ws, rnd, duration);
+
+        auto cost = judge->answer(group);
+
+        dump(cost);
+
+        if (auto j = std::dynamic_pointer_cast<FileJudge>(judge)) {
+
+            dump(j->ws);
+            dump(ws);
+        }
+
+        return cost;
+    }
+
+};
+
+
+//void batch_execution() {
+//
+//    constexpr int num_seeds = 100;
+//    int progress = 0;
+//    int score_sum = 0;
+//    int score_min = INT_MAX;
+//    int seed_min = -1;
+//    int score_max = 0;
+//    int seed_max = -1;
+//
+//#pragma omp parallel for num_threads(8)
+//    for (int seed = 0; seed < num_seeds; seed++) {
+//
+//        Input input;
+//
+//#pragma omp critical(crit_sct)
+//        {
+//            std::string input_file(format("../../tools_win/in/%04d.txt", seed));
+//            std::ifstream ifs(input_file);
+//            input = load_input(ifs);
+//        }
+//
+//        auto [score, ans] = solve(input, false, true);
+//
+//#pragma omp critical(crit_sct)
+//        {
+//            progress++;
+//            score_sum += score;
+//            if (chmin(score_min, score)) seed_min = seed;
+//            if (chmax(score_max, score)) seed_max = seed;;
+//            std::cerr << format(
+//                "\rprogress=%3d/%3d, avg=%4.2f, min(%2d)=%4d, max(%2d)=%4d",
+//                progress, num_seeds, (double)score_sum / progress, seed_min, score_min, seed_max, score_max
+//            );
+//
+//            std::string output_file(format("../../tools_win/out/%04d.txt", seed));
+//            std::ofstream ofs(output_file);
+//            ofs << ans;
+//        }
+//    }
+//
+//    std::cerr << '\n';
+//    dump(score_sum * 150.0 / num_seeds);
+//
+//}
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 
@@ -707,7 +749,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     cv::utils::logging::setLogLevel(cv::utils::logging::LogLevel::LOG_LEVEL_SILENT);
 #endif
 
-#if 1
+#if 0
     std::ifstream ifs("../../tools_win/in/0000.txt");
     std::istream& in = ifs;
     std::ofstream ofs("../../tools_win/out/0000.txt");
