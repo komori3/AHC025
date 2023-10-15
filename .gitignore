@@ -1,0 +1,4 @@
+.vs
+tools_win
+vs/*/bin
+vs/*/obj
