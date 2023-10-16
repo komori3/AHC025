@@ -339,21 +339,6 @@ struct LocalJudge : Judge {
 
 };
 
-
-
-struct Items {
-    int id;
-    std::vector<int> items;
-    Items() {}
-    Items(int id_, const std::vector<int>& items_) : id(id_), items(items_) {}
-    std::string stringify() const {
-        std::string res = "[" + std::to_string(id) + ",{";
-        for (int i : items) res += std::to_string(i) + ",";
-        res += "}]";
-        return res;
-    }
-};
-
 namespace NFordJohnson {
 
     constexpr std::uint_fast64_t jacobsthal_diff[] = {
@@ -382,106 +367,6 @@ namespace NFordJohnson {
         405, 411, 417, 423, 429, 436, 443, 450, 457, 464,
         471, 478, 485, 492, 499, 506, 513, 520, 527, 534
     };
-
-    void merge_insertion_sort_impl(JudgePtr judge, std::vector<std::vector<Items>>& groups) {
-        int N = (int)groups.size();
-        if (N == 1) return;
-        // make pairwise comparisons of floor(n/2) disjoint pairs of elements
-        std::vector<std::vector<Items>> ngroups;
-        for (int k = 0; k < N / 2; k++) {
-            int i = k * 2;
-            char res = judge->query({ groups[i].front().items }, { groups[i + 1].front().items });
-            // (a; b)
-            if (res == '>') {
-                ngroups.push_back(groups[i]);
-                for (const auto& x : groups[i + 1]) ngroups.back().push_back(x);
-            }
-            else {
-                ngroups.push_back(groups[i + 1]);
-                for (const auto& x : groups[i]) ngroups.back().push_back(x);
-            }
-        }
-
-        // sort the floor(n/2) larger numbers by merge insertion
-        merge_insertion_sort_impl(judge, ngroups);
-
-        if (auto ljudge = std::dynamic_pointer_cast<LocalJudge>(judge)) {
-            for (int i = 1; i < ngroups.size(); i++) {
-                int lsum = 0, rsum = 0;
-                for (int i : ngroups[i - 1].front().items) lsum += ljudge->ws[i];
-                for (int i : ngroups[i].front().items) rsum += ljudge->ws[i];
-                assert(lsum <= rsum);
-            }
-        }
-
-        const int M = ngroups.front().size() / 2;
-        std::vector<std::vector<Items>> main_chain;
-        std::vector<std::vector<Items>> bs;
-        std::vector<int> keys;
-        {
-            const auto& v = ngroups.front();
-            main_chain.emplace_back(v.begin() + M, v.end()); // b0
-            main_chain.emplace_back(v.begin(), v.begin() + M); // a0
-        }
-        for (int i = 1; i < ngroups.size(); i++) {
-            const auto& v = ngroups[i];
-            bs.emplace_back(v.begin() + M, v.end()); // bi
-            main_chain.emplace_back(v.begin(), v.begin() + M); // ai
-            keys.push_back(v.front().id);
-        }
-        if (N % 2 == 1) {
-            bs.push_back(groups.back()); // stray
-            keys.push_back(-1);
-        }
-
-        int begin = 0;
-        for (int i = 0; begin < bs.size(); i++) {
-            int end = std::min(begin + jacobsthal_diff[i], bs.size());
-
-            for (int j = end - 1; j >= begin; j--) {
-                const auto& b = bs[j];
-                const int key = keys[j];
-                // main chain から key を探して、二分探索
-                int left = -1, right = (int)main_chain.size();
-                if (key != -1) {
-                    for (int k = 0; k < main_chain.size(); k++) {
-                        if (main_chain[k].front().id == key) {
-                            right = k;
-                            break;
-                        }
-                    }
-                    assert(right < (int)main_chain.size());
-                }
-
-                while (right - left > 1) {
-                    int mid = (left + right) / 2;
-                    auto res = judge->query({ b.front().items }, { main_chain[mid].front().items });
-                    if (res == '>') {
-                        left = mid;
-                    }
-                    else {
-                        right = mid;
-                    }
-                }
-
-                // insert to right
-                main_chain.insert(main_chain.begin() + right, b);
-
-                if (auto ljudge = std::dynamic_pointer_cast<LocalJudge>(judge)) {
-                    for (int i = 1; i < main_chain.size(); i++) {
-                        int lsum = 0, rsum = 0;
-                        for (int i : main_chain[i - 1].front().items) lsum += ljudge->ws[i];
-                        for (int i : main_chain[i].front().items) rsum += ljudge->ws[i];
-                        assert(lsum <= rsum);
-                    }
-                }
-            }
-
-            begin = end;
-        }
-
-        groups = main_chain;
-    }
 
     void merge_insertion_sort_impl(JudgePtr judge, std::vector<std::vector<int>>& groups) {
         int N = (int)groups.size();
@@ -577,18 +462,6 @@ namespace NFordJohnson {
         groups = main_chain;
     }
 
-    std::vector<Items> merge_insertion_sort(JudgePtr judge, const std::vector<Items>& items) {
-        std::vector<std::vector<Items>> groups(items.size());
-        for (int i = 0; i < items.size(); i++) groups[i].push_back(items[i]);
-
-        merge_insertion_sort_impl(judge, groups);
-
-        std::vector<Items> result;
-        for (const auto& g : groups) result.push_back(g.front());
-
-        return result;
-    }
-
     std::vector<int> merge_insertion_sort(JudgePtr judge) {
         const int N = judge->N;
         std::vector<std::vector<int>> groups(N);
@@ -648,33 +521,11 @@ struct Solver {
         return ws;
     }
 
-    std::vector<int> create_weights(int K) {
-        std::vector<int> ws(K);
-        for (int i = 0; i < K; i++) {
-            while (true) {
-                double w = dist(engine);
-                if (w > thresh) continue;
-                ws[i] = std::max(1, (int)round(w));
-                break;
-            }
-        }
-        return ws;
-    }
-
     std::vector<int> create_weights(const std::vector<int>& ord) {
         auto ws = create_weights();
         std::sort(ws.begin(), ws.end());
         auto nws(ws);
         for (int i = 0; i < N; i++) nws[ord[i]] = ws[i];
-        return nws;
-    }
-
-    std::vector<int> create_weights(const std::vector<Items>& items_sorted) {
-        const int K = items_sorted.size();
-        auto ws = create_weights(K);
-        std::sort(ws.begin(), ws.end());
-        auto nws(ws);
-        for (int i = 0; i < K; i++) nws[items_sorted[i].id] = ws[i];
         return nws;
     }
 
@@ -692,7 +543,7 @@ struct Solver {
 
     double calc_var(const std::vector<int>& ws, const std::vector<int>& ds) const {
         std::vector<int> ts(D);
-        for (int i = 0; i < ws.size(); i++) {
+        for (int i = 0; i < N; i++) {
             ts[ds[i]] += ws[i];
         }
         double sum = 0, sqsum = 0;
@@ -709,11 +560,10 @@ struct Solver {
 
         double start_time = timer.elapsed_ms(), end_time = start_time + duration;
 
-        const int K = ws.size();
-        std::vector<int> ds(K);
-        for (int i = 0; i < K; i++) ds[i] = i % D;
+        std::vector<int> ds(N);
+        for (int i = 0; i < N; i++) ds[i] = i % D;
 
-        //judge->answer(ds);
+        judge->answer(ds);
 
         int loop = 0, reject = 0;
         auto cost = calc_var(ws, ds);
@@ -724,9 +574,9 @@ struct Solver {
             int r = rnd.next_int(2);
             if (r == 0) {
                 // swap
-                int i = rnd.next_int(K), j;
+                int i = rnd.next_int(N), j;
                 do {
-                    j = rnd.next_int(K);
+                    j = rnd.next_int(N);
                 } while (ds[i] == ds[j]);
                 std::swap(ds[i], ds[j]);
                 auto ncost = calc_var(ws, ds);
@@ -739,14 +589,14 @@ struct Solver {
                     cost = ncost;
                     if (chmin(min_cost, cost)) {
                         best_ds = ds;
-                        //judge->answer(ds);
+                        judge->answer(ds);
                         judge->comment(format("loop=%6d, cost=%.2f (swap)", loop, cost));
                     }
                 }
             }
             else {
                 // change
-                int i = rnd.next_int(K);
+                int i = rnd.next_int(N);
                 int pd = ds[i];
                 int d;
                 do {
@@ -763,13 +613,13 @@ struct Solver {
                     cost = ncost;
                     if (chmin(min_cost, cost)) {
                         best_ds = ds;
-                        //judge->answer(ds);
+                        judge->answer(ds);
                         judge->comment(format("loop=%6d, cost=%.2f (change)", loop, cost));
                     }
                 }
             }
             if (reject >= 10000) {
-                for (int i = 0; i < K; i++) ds[i] = i % D;
+                for (int i = 0; i < N; i++) ds[i] = i % D;
                 cost = calc_var(ws, ds);
             }
         }
@@ -833,130 +683,88 @@ struct Solver {
         return ws;
     }
 
-    std::vector<int> order_preserving_climb(
-        const std::vector<Items>& items, const std::vector<Items>& items_sorted, Xorshift& rnd, double duration
-    ) {
-        const int K = items.size();
-        double start_time = timer.elapsed_ms(), end_time = start_time + duration;
-        auto ws = create_weights(items_sorted);
-        int score = compute_score(ws);
-        int loop = 0;
-        while (timer.elapsed_ms() < end_time && score < cmps.size()) {
-            loop++;
-            int type = rnd.next_int(10);
-            if (type < 9) {
-                // change single
-                int nth = rnd.next_int(K);
-                int lo = (nth == 0 ? 0 : ws[items_sorted[nth - 1].id]);
-                int hi = (nth == K - 1 ? (int)floor(thresh) : ws[items_sorted[nth + 1].id]);
-                int pval = ws[items_sorted[nth].id];
-                if (hi - 1 < lo + 1) continue;
-                int nval = rnd.next_int(lo + 1, hi - 1);
-                ws[items_sorted[nth].id] = nval;
-                int nscore = compute_score(ws);
-                if (nscore < score) {
-                    ws[items_sorted[nth].id] = pval;
-                }
-                else {
-                    score = nscore;
-                }
-            }
-            else {
-                // change range
-                int left, right; // inclusive
-                do {
-                    left = rnd.next_int(K);
-                    right = rnd.next_int(K);
-                } while (right <= left);
-                int lo = (left == 0 ? 0 : ws[items_sorted[left - 1].id]), lo_diff = ws[items_sorted[left].id] - lo - 1;
-                int hi = (right == K - 1 ? (int)floor(thresh) : ws[items_sorted[right + 1].id]), hi_diff = hi - ws[items_sorted[right].id] - 1;
-                if (lo <= 0 || hi <= 0) continue;
-                int diff = rnd.next_int(-lo_diff, hi_diff);
-                for (int nth = left; nth <= right; nth++) {
-                    ws[items_sorted[nth].id] += diff;
-                }
-                int nscore = compute_score(ws);
-                if (nscore < score) {
-                    for (int nth = left; nth <= right; nth++) {
-                        ws[items_sorted[nth].id] -= diff;
-                    }
-                }
-                else {
-                    score = nscore;
-                }
-            }
-            if (!(loop & 0xFFF)) judge->comment(format("loop=%6d, score=%4d/%4lld", loop, score, cmps.size()));
-        }
-        judge->comment(format("loop=%6d, score=%4d/%4lld", loop, score, cmps.size()));
-        return ws;
-    }
-
-    std::vector<Items> create_items() const {
-        std::vector<Items> items;
-        if (NFordJohnson::cap[N] <= Q * 3 / 4) {
-            judge->comment("sortable");
-            for (int i = 0; i < N; i++) {
-                items.emplace_back(i, std::vector<int>({ i }));
-            }
-        }
-        else {
-            int K = N;
-            while (Q * 3 / 4 < NFordJohnson::cap[K]) K--;
-            judge->comment(format("need to compress: %d -> %d", N, K));
-            for (int k = 0; k < K; k++) {
-                items.emplace_back(k, std::vector<int>());
-            }
-            for (int i = 0; i < N; i++) {
-                items[i % K].items.push_back(i);
-            }
-        }
-        return items;
-    }
-
     int solve(const double duration) {
 
         Timer timer;
 
         judge->comment(format("N=%3d, D=%2d, Q=%4d", judge->N, judge->D, judge->Q));
 
-        const auto items = create_items();
-        const auto items_sorted = NFordJohnson::merge_insertion_sort(judge, items);
-        judge->comment(format("cmp=%3d, Q=%4d", judge->turn, judge->Q));
+        std::vector<int> ord;
+        if (NFordJohnson::cap[judge->N] <= judge->Q) {
+            judge->comment("sortable");
+            ord = NFordJohnson::merge_insertion_sort(judge);
+            judge->comment(format("cmp=%3d, Q=%4d", judge->turn, judge->Q));
+        }
 
-        const int K = items.size();
-
-        std::vector<int> perm(K);
+        std::vector<int> perm(N);
         std::iota(perm.begin(), perm.end(), 0);
 
         Xorshift rnd;
         while (judge->turn < Q) {
             //int idx = rnd.next_int(1, N - 1);
             //int idx = N / 2;
-            int idx = K / 2 + rnd.next_int(5) - 2;
-            std::vector<int> L, Litems, R, Ritems;
-            for (int i = 0; i < idx; i++) {
-                int k = perm[i];
-                L.push_back(k);
-                for (int j : items[k].items) {
-                    Litems.push_back(j);
-                }
-            }
-            for (int i = idx; i < K; i++) {
-                int k = perm[i];
-                R.push_back(k);
-                for (int j : items[k].items) {
-                    Ritems.push_back(j);
-                }
-            }
+            int idx = N / 2 + rnd.next_int(5) - 2;
+            std::vector<int> L(perm.begin(), perm.begin() + idx);
+            std::vector<int> R(perm.begin() + idx, perm.end());
             Ls.push_back(L);
             Rs.push_back(R);
-            cmps += judge->query(Litems, Ritems);
+            cmps += judge->query(L, R);
             shuffle_vector(perm, rnd);
         }
         judge->comment(format("additional conditions: %4lld", cmps.size()));
 
+        std::vector<int> ws;
+
         const double time_phase1_end = duration * 0.75;
-        auto ws = order_preserving_climb(items, items_sorted, rnd, time_phase1_end - timer.elapsed_ms());
+        if (NFordJohnson::cap[judge->N] <= judge->Q) {
+            ws = order_preserving_climb(ord, rnd, time_phase1_end - timer.elapsed_ms());
+        }
+        else {
+            ws = create_weights();
+            int score = compute_score(ws);
+            int loop = 0;
+            while (timer.elapsed_ms() < time_phase1_end && score < cmps.size()) {
+                loop++;
+                if (rnd.next_int(2)) {
+                    // swap
+                    int i = rnd.next_int(N), j;
+                    do {
+                        j = rnd.next_int(N);
+                    } while (i == j);
+                    std::swap(ws[i], ws[j]);
+                    auto nscore = compute_score(ws);
+                    if (nscore < score) {
+                        std::swap(ws[i], ws[j]);
+                    }
+                    else {
+                        score = nscore;
+                    }
+                }
+                else {
+                    // change
+                    int i = rnd.next_int(N);
+                    int pw = ws[i];
+                    double w = -1.0;
+                    while (true) {
+                        w = dist(engine);
+                        if (w > thresh) continue;
+                        ws[i] = std::max(1, (int)round(w));
+                        break;
+                    }
+                    auto nscore = compute_score(ws);
+                    if (nscore < score) {
+                        ws[i] = pw;
+                    }
+                    else {
+                        score = nscore;
+                    }
+                }
+                if (!(loop & 0xFFF)) {
+                    judge->comment(format("loop=%6d, score=%4d/%4lld", loop, score, cmps.size()));
+                }
+            }
+            judge->comment(format("loop=%6d, score=%4d/%4lld", loop, score, cmps.size()));
+        }
 
         // oracle
         //if (auto j = std::dynamic_pointer_cast<FileJudge>(judge)) {
@@ -965,14 +773,7 @@ struct Solver {
 
         auto group = grouping(ws, rnd, duration - timer.elapsed_ms());
 
-        std::vector<int> ans(N);
-        for (int gid = 0; gid < group.size(); gid++) {
-            for (int i : items[gid].items) {
-                ans[i] = group[gid];
-            }
-        }
-
-        auto cost = judge->answer(ans, true);
+        auto cost = judge->answer(group, true);
 
         judge->comment(format("final score=%d", cost));
 
@@ -1040,9 +841,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 #endif
 
 #if 0
-    std::ifstream ifs("../../tools_win/in/0009.txt");
+    std::ifstream ifs("../../tools_win/in/0001.txt");
     std::istream& in = ifs;
-    std::ofstream ofs("../../tools_win/out/0009.txt");
+    std::ofstream ofs("../../tools_win/out/0001.txt");
     std::ostream& out = ofs;
     auto judge = std::make_shared<FileJudge>(in, out);
 #else

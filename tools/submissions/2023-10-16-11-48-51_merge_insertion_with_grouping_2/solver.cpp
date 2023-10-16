@@ -893,7 +893,7 @@ struct Solver {
 
     std::vector<Items> create_items() const {
         std::vector<Items> items;
-        if (NFordJohnson::cap[N] <= Q * 3 / 4) {
+        if (NFordJohnson::cap[N] <= Q / 2) {
             judge->comment("sortable");
             for (int i = 0; i < N; i++) {
                 items.emplace_back(i, std::vector<int>({ i }));
@@ -901,7 +901,7 @@ struct Solver {
         }
         else {
             int K = N;
-            while (Q * 3 / 4 < NFordJohnson::cap[K]) K--;
+            while (Q / 2 < NFordJohnson::cap[K]) K--;
             judge->comment(format("need to compress: %d -> %d", N, K));
             for (int k = 0; k < K; k++) {
                 items.emplace_back(k, std::vector<int>());

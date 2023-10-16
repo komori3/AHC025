@@ -893,7 +893,7 @@ struct Solver {
 
     std::vector<Items> create_items() const {
         std::vector<Items> items;
-        if (NFordJohnson::cap[N] <= Q * 3 / 4) {
+        if (NFordJohnson::cap[N] <= Q) {
             judge->comment("sortable");
             for (int i = 0; i < N; i++) {
                 items.emplace_back(i, std::vector<int>({ i }));
@@ -901,7 +901,7 @@ struct Solver {
         }
         else {
             int K = N;
-            while (Q * 3 / 4 < NFordJohnson::cap[K]) K--;
+            while (Q < NFordJohnson::cap[K]) K--;
             judge->comment(format("need to compress: %d -> %d", N, K));
             for (int k = 0; k < K; k++) {
                 items.emplace_back(k, std::vector<int>());
@@ -1040,9 +1040,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 #endif
 
 #if 0
-    std::ifstream ifs("../../tools_win/in/0009.txt");
+    std::ifstream ifs("../../tools_win/in/0001.txt");
     std::istream& in = ifs;
-    std::ofstream ofs("../../tools_win/out/0009.txt");
+    std::ofstream ofs("../../tools_win/out/0001.txt");
     std::ostream& out = ofs;
     auto judge = std::make_shared<FileJudge>(in, out);
 #else
