@@ -928,24 +928,21 @@ struct Solver {
         std::vector<std::vector<int>> groups(D);
         // 蛇腹
         {
-            auto items_tmp(items_sorted);
-            std::reverse(items_tmp.begin(), items_tmp.end());
             bool forward = true;
             for (int begin = 0; begin < K; begin += D) {
                 int end = std::min(begin + D, K);
                 if (forward) {
                     for (int i = begin; i < end; i++) {
-                        groups[i - begin].push_back(items_tmp[i].id);
+                        groups[i - begin].push_back(items_sorted[i].id);
                     }
                 }
                 else {
                     for (int i = begin; i < end; i++) {
-                        groups[D - 1 - (i - begin)].push_back(items_tmp[i].id);
+                        groups[D - 1 - (i - begin)].push_back(items_sorted[i].id);
                     }
                 }
                 forward = !forward;
             }
-            std::reverse(items_tmp.begin(), items_tmp.end());
         }
 
         auto get_items = [&](int gid) {
@@ -1038,24 +1035,21 @@ struct Solver {
         std::vector<std::vector<int>> groups(D);
         // 蛇腹
         {
-            auto items_tmp(items_sorted);
-            std::reverse(items_tmp.begin(), items_tmp.end());
             bool forward = true;
             for (int begin = 0; begin < K; begin += D) {
                 int end = std::min(begin + D, K);
                 if (forward) {
                     for (int i = begin; i < end; i++) {
-                        groups[i - begin].push_back(items_tmp[i].id);
+                        groups[i - begin].push_back(items_sorted[i].id);
                     }
                 }
                 else {
                     for (int i = begin; i < end; i++) {
-                        groups[D - 1 - (i - begin)].push_back(items_tmp[i].id);
+                        groups[D - 1 - (i - begin)].push_back(items_sorted[i].id);
                     }
                 }
                 forward = !forward;
             }
-            std::reverse(items_tmp.begin(), items_tmp.end());
         }
 
         auto get_items = [&](int gid) {
@@ -1174,7 +1168,7 @@ void batch_execution() {
 
     std::cerr << '\n';
 
-    std::ofstream ofs("plot2.txt");
+    std::ofstream ofs("plot.txt");
     for (const auto& [N, D, Q, C] : NDQS) {
         ofs << N << ' ' << D << ' ' << Q << ' ' << C << '\n';
     }
@@ -1196,9 +1190,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 #endif
 
 #if 0
-    std::ifstream ifs("../../tools_win/in/0003.txt");
+    std::ifstream ifs("../../tools_win/in/0000.txt");
     std::istream& in = ifs;
-    std::ofstream ofs("../../tools_win/out/0003.txt");
+    std::ofstream ofs("../../tools_win/out/0000.txt");
     std::ostream& out = ofs;
     auto judge = std::make_shared<FileJudge>(in, out);
 #else
@@ -1211,7 +1205,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 
     // logistic regression
     int N = judge->N, D = judge->D, Q = judge->Q;
-    double z = -0.007318061682892 * N - 0.003653615226494 * D + 0.000131809790219 * Q + 2.034156107816106;
+    double z = -0.006427540203093 * N - 0.180134756427288 * D + 0.000845390713772 * Q + 1.531485703316995;
     z = 1.0 / (1.0 + exp(-z));
 
     if (z < 0.5) solver.solve1(1980 - timer.elapsed_ms());

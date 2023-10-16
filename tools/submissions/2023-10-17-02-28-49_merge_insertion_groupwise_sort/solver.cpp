@@ -334,7 +334,7 @@ struct LocalJudge : Judge {
     }
 
     void comment(const std::string& str) const override {
-        //std::cerr << "# " << str << '\n';
+        std::cerr << "# " << str << '\n';
     }
 
 };
@@ -913,7 +913,7 @@ struct Solver {
         return items;
     }
 
-    int solve1(const double duration) {
+    int solve(const double duration) {
 
         Timer timer;
 
@@ -925,27 +925,71 @@ struct Solver {
 
         const int K = items.size();
 
+        //std::vector<int> perm(K);
+        //std::iota(perm.begin(), perm.end(), 0);
+
+        //Xorshift rnd;
+        //while (judge->turn < Q) {
+        //    //int idx = rnd.next_int(1, N - 1);
+        //    //int idx = N / 2;
+        //    int idx = K / 2 + rnd.next_int(5) - 2;
+        //    std::vector<int> L, Litems, R, Ritems;
+        //    for (int i = 0; i < idx; i++) {
+        //        int k = perm[i];
+        //        L.push_back(k);
+        //        for (int j : items[k].items) {
+        //            Litems.push_back(j);
+        //        }
+        //    }
+        //    for (int i = idx; i < K; i++) {
+        //        int k = perm[i];
+        //        R.push_back(k);
+        //        for (int j : items[k].items) {
+        //            Ritems.push_back(j);
+        //        }
+        //    }
+        //    Ls.push_back(L);
+        //    Rs.push_back(R);
+        //    cmps += judge->query(Litems, Ritems);
+        //    shuffle_vector(perm, rnd);
+        //}
+        //judge->comment(format("additional conditions: %4lld", cmps.size()));
+
+        //const double time_phase1_end = duration * 0.75;
+        //auto ws = order_preserving_climb(items, items_sorted, rnd, time_phase1_end - timer.elapsed_ms());
+
+        //// oracle
+        ////if (auto j = std::dynamic_pointer_cast<FileJudge>(judge)) {
+        ////    ws = j->ws;
+        ////}
+
+        //auto group = grouping(ws, rnd, duration - timer.elapsed_ms());
+
+        //std::vector<int> ans(N);
+        //for (int gid = 0; gid < group.size(); gid++) {
+        //    for (int i : items[gid].items) {
+        //        ans[i] = group[gid];
+        //    }
+        //}
+
         std::vector<std::vector<int>> groups(D);
         // 蛇腹
         {
-            auto items_tmp(items_sorted);
-            std::reverse(items_tmp.begin(), items_tmp.end());
             bool forward = true;
             for (int begin = 0; begin < K; begin += D) {
                 int end = std::min(begin + D, K);
                 if (forward) {
                     for (int i = begin; i < end; i++) {
-                        groups[i - begin].push_back(items_tmp[i].id);
+                        groups[i - begin].push_back(items_sorted[i].id);
                     }
                 }
                 else {
                     for (int i = begin; i < end; i++) {
-                        groups[D - 1 - (i - begin)].push_back(items_tmp[i].id);
+                        groups[D - 1 - (i - begin)].push_back(items_sorted[i].id);
                     }
                 }
                 forward = !forward;
             }
-            std::reverse(items_tmp.begin(), items_tmp.end());
         }
 
         auto get_items = [&](int gid) {
@@ -970,6 +1014,7 @@ struct Solver {
             return -1;
         };
 
+#if 0
         // ランダムに比較して、大きい方の最小要素を移動
         Xorshift rnd;
         while (judge->turn < Q) {
@@ -1007,79 +1052,7 @@ struct Solver {
                 judge->comment(format("turn=%4d, score=%d", judge->turn, cost));
             }
         }
-
-        std::vector<int> ans(N);
-        for (int gid = 0; gid < D; gid++) {
-            for (int id : groups[gid]) {
-                for (int i : items[id].items) {
-                    ans[i] = gid;
-                }
-            }
-        }
-
-        auto cost = judge->answer(ans, true);
-        judge->comment(format("final score=%d", cost));
-
-        return cost;
-    }
-
-    int solve2(const double duration) {
-
-        Timer timer;
-
-        judge->comment(format("N=%3d, D=%2d, Q=%4d", judge->N, judge->D, judge->Q));
-
-        const auto items = create_items();
-        const auto items_sorted = NFordJohnson::merge_insertion_sort(judge, items);
-        judge->comment(format("cmp=%3d, Q=%4d", judge->turn, judge->Q));
-
-        const int K = items.size();
-
-        std::vector<std::vector<int>> groups(D);
-        // 蛇腹
-        {
-            auto items_tmp(items_sorted);
-            std::reverse(items_tmp.begin(), items_tmp.end());
-            bool forward = true;
-            for (int begin = 0; begin < K; begin += D) {
-                int end = std::min(begin + D, K);
-                if (forward) {
-                    for (int i = begin; i < end; i++) {
-                        groups[i - begin].push_back(items_tmp[i].id);
-                    }
-                }
-                else {
-                    for (int i = begin; i < end; i++) {
-                        groups[D - 1 - (i - begin)].push_back(items_tmp[i].id);
-                    }
-                }
-                forward = !forward;
-            }
-            std::reverse(items_tmp.begin(), items_tmp.end());
-        }
-
-        auto get_items = [&](int gid) {
-            Items is;
-            is.id = gid;
-            for (int k : groups[gid]) {
-                for (int i : items[k].items) {
-                    is.items.push_back(i);
-                }
-            }
-            return is;
-        };
-
-        auto get_min_id = [&](int gid) {
-            const auto& group = groups[gid];
-            for (int k = 0; k < K; k++) {
-                if (std::count(group.begin(), group.end(), items_sorted[k].id)) {
-                    return items_sorted[k].id;
-                }
-            }
-            assert(false);
-            return -1;
-        };
-
+#endif
         while (judge->turn + NFordJohnson::cap[D] <= Q) {
             std::vector<Items> gitems;
             for (int gid = 0; gid < D; gid++) {
@@ -1135,56 +1108,53 @@ struct Solver {
 };
 
 
-void batch_execution() {
-
-    constexpr int num_seeds = 10000;
-    
-    std::vector<std::tuple<int, int, int, int>> NDQS(num_seeds);
-
-    int progress = 0, num1 = 0, num2 = 0;
-#pragma omp parallel for num_threads(8)
-    for (int seed = 0; seed < num_seeds; seed++) {
-
-        int N, D, Q, score1, score2;
-        {
-            auto judge = std::make_shared<LocalJudge>(seed);
-            N = judge->N;
-            D = judge->D;
-            Q = judge->Q;
-            Solver solver(judge);
-            score1 = solver.solve1(1980);
-        }
-        {
-            auto judge = std::make_shared<LocalJudge>(seed);
-            assert(N == judge->N && D == judge->D && Q == judge->Q);
-            Solver solver(judge);
-            score2 = solver.solve2(1980);
-        }
-
-#pragma omp critical(crit_sct)
-        {
-            NDQS[seed] = { N, D, Q, score1 < score2 ? 1 : 2 };
-            (score1 < score2 ? num1 : num2)++;
-            progress++;
-            std::cerr << format("\rprogress=%5d/%5d, num1=%5d, num2=%5d",
-                progress, num_seeds, num1, num2
-            );
-        }
-    }
-
-    std::cerr << '\n';
-
-    std::ofstream ofs("plot2.txt");
-    for (const auto& [N, D, Q, C] : NDQS) {
-        ofs << N << ' ' << D << ' ' << Q << ' ' << C << '\n';
-    }
-
-}
+//void batch_execution() {
+//
+//    constexpr int num_seeds = 100;
+//    int progress = 0;
+//    int score_sum = 0;
+//    int score_min = INT_MAX;
+//    int seed_min = -1;
+//    int score_max = 0;
+//    int seed_max = -1;
+//
+//#pragma omp parallel for num_threads(8)
+//    for (int seed = 0; seed < num_seeds; seed++) {
+//
+//        Input input;
+//
+//#pragma omp critical(crit_sct)
+//        {
+//            std::string input_file(format("../../tools_win/in/%04d.txt", seed));
+//            std::ifstream ifs(input_file);
+//            input = load_input(ifs);
+//        }
+//
+//        auto [score, ans] = solve(input, false, true);
+//
+//#pragma omp critical(crit_sct)
+//        {
+//            progress++;
+//            score_sum += score;
+//            if (chmin(score_min, score)) seed_min = seed;
+//            if (chmax(score_max, score)) seed_max = seed;;
+//            std::cerr << format(
+//                "\rprogress=%3d/%3d, avg=%4.2f, min(%2d)=%4d, max(%2d)=%4d",
+//                progress, num_seeds, (double)score_sum / progress, seed_min, score_min, seed_max, score_max
+//            );
+//
+//            std::string output_file(format("../../tools_win/out/%04d.txt", seed));
+//            std::ofstream ofs(output_file);
+//            ofs << ans;
+//        }
+//    }
+//
+//    std::cerr << '\n';
+//    dump(score_sum * 150.0 / num_seeds);
+//
+//}
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
-
-    //batch_execution();
-    //exit(1);
 
     //NFordJohnson::test();
     //exit(1);
@@ -1196,9 +1166,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 #endif
 
 #if 0
-    std::ifstream ifs("../../tools_win/in/0003.txt");
+    std::ifstream ifs("../../tools_win/in/0015.txt");
     std::istream& in = ifs;
-    std::ofstream ofs("../../tools_win/out/0003.txt");
+    std::ofstream ofs("../../tools_win/out/0015.txt");
     std::ostream& out = ofs;
     auto judge = std::make_shared<FileJudge>(in, out);
 #else
@@ -1208,14 +1178,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 #endif
 
     Solver solver(judge);
-
-    // logistic regression
-    int N = judge->N, D = judge->D, Q = judge->Q;
-    double z = -0.007318061682892 * N - 0.003653615226494 * D + 0.000131809790219 * Q + 2.034156107816106;
-    z = 1.0 / (1.0 + exp(-z));
-
-    if (z < 0.5) solver.solve1(1980 - timer.elapsed_ms());
-    else solver.solve2(1980 - timer.elapsed_ms());
+    solver.solve(1980 - timer.elapsed_ms());
 
     judge->comment(format("elapsed=%.2f ms", timer.elapsed_ms()));
 

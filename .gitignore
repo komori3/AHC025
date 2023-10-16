@@ -5,3 +5,4 @@ vs/*/bin
 vs/*/obj
 !tools/submissions
 tools/submissions/*/out
+scripts/venv
