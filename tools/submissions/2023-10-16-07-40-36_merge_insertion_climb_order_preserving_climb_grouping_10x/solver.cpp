@@ -619,51 +619,23 @@ struct Solver {
         int loop = 0;
         while (timer.elapsed_ms() < end_time && score < cmps.size()) {
             loop++;
-            int type = rnd.next_int(10);
-            if (type < 9) {
-                // change single
-                int nth = rnd.next_int(N);
-                int lo = (nth == 0 ? 0 : ws[ord[nth - 1]]);
-                int hi = (nth == N - 1 ? (int)floor(thresh) : ws[ord[nth + 1]]);
-                int pval = ws[ord[nth]];
-                if (hi - 1 < lo + 1) continue;
-                int nval = rnd.next_int(lo + 1, hi - 1);
-                ws[ord[nth]] = nval;
-                int nscore = compute_score(ws);
-                if (nscore < score) {
-                    ws[ord[nth]] = pval;
-                }
-                else {
-                    score = nscore;
-                }
+            // change
+            int nth = rnd.next_int(N);
+            int lo = (nth == 0 ? 0 : ws[ord[nth - 1]]);
+            int hi = (nth == N - 1 ? (int)floor(thresh) : ws[ord[nth + 1]]);
+            int pval = ws[ord[nth]];
+            if (hi - 1 < lo + 1) continue;
+            int nval = rnd.next_int(lo + 1, hi - 1);
+            ws[ord[nth]] = nval;
+            int nscore = compute_score(ws);
+            if (nscore < score) {
+                ws[ord[nth]] = pval;
             }
             else {
-                // change range
-                int left, right; // inclusive
-                do {
-                    left = rnd.next_int(N);
-                    right = rnd.next_int(N);
-                } while (right <= left);
-                int lo = (left == 0 ? 0 : ws[ord[left - 1]]), lo_diff = ws[ord[left]] - lo - 1;
-                int hi = (right == N - 1 ? (int)floor(thresh) : ws[ord[right + 1]]), hi_diff = hi - ws[ord[right]] - 1;
-                if (lo <= 0 || hi <= 0) continue;
-                int diff = rnd.next_int(-lo_diff, hi_diff);
-                for (int nth = left; nth <= right; nth++) {
-                    ws[ord[nth]] += diff;
-                }
-                int nscore = compute_score(ws);
-                if (nscore < score) {
-                    for (int nth = left; nth <= right; nth++) {
-                        ws[ord[nth]] -= diff;
-                    }
-                }
-                else {
-                    score = nscore;
-                }
+                score = nscore;
             }
             if (!(loop & 0xFFF)) judge->comment(format("loop=%6d, score=%4d/%4lld", loop, score, cmps.size()));
         }
-        judge->comment(format("loop=%6d, score=%4d/%4lld", loop, score, cmps.size()));
         return ws;
     }
 
@@ -750,7 +722,7 @@ struct Solver {
             judge->comment(format("loop=%6d, score=%4d/%4lld", loop, score, cmps.size()));
         }
 
-        auto group = grouping(ws, rnd, std::min(500.0, duration - timer.elapsed_ms()));
+        auto group = grouping(ws, rnd, std::min(300.0, duration - timer.elapsed_ms()));
 
         auto cost = judge->answer(group, true);
 
@@ -819,7 +791,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     cv::utils::logging::setLogLevel(cv::utils::logging::LogLevel::LOG_LEVEL_SILENT);
 #endif
 
-#if 1
+#if 0
     std::ifstream ifs("../../tools_win/in/0001.txt");
     std::istream& in = ifs;
     std::ofstream ofs("../../tools_win/out/0001.txt");
@@ -832,7 +804,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 #endif
 
     Solver solver(judge);
-    solver.solve(1980 - timer.elapsed_ms());
+    solver.solve(19800 - timer.elapsed_ms());
 
     judge->comment(format("elapsed=%.2f ms", timer.elapsed_ms()));
 

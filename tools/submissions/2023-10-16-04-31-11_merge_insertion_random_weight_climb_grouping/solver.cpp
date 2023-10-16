@@ -161,8 +161,7 @@ struct Judge {
     int turn = 0;
 
     virtual char query(const std::vector<int>& L, const std::vector<int>& R) = 0;
-    virtual int answer(const std::vector<int>& D, bool confirm = false) const = 0;
-    virtual void comment(const std::string& str) const = 0;
+    virtual int answer(const std::vector<int>& D) const = 0;
 
 };
 
@@ -189,18 +188,11 @@ struct ServerJudge : Judge {
         return result;
     }
 
-    int answer(const std::vector<int>& ds, bool confirm) const override {
-        assert(ds.size() == N);
-        if (confirm) assert(turn == Q);
-        else out << "#c ";
+    int answer(const std::vector<int>& ds) const override {
+        assert(ds.size() == N && turn == Q);
         for (int d : ds) out << d << ' ';
         out << std::endl;
         return -1;
-    }
-
-    void comment(const std::string& str) const override {
-        std::cerr << "# " << str << '\n';
-        out << "# " << str << std::endl;
     }
 
 };
@@ -236,10 +228,8 @@ struct FileJudge : Judge {
         return (lsum < rsum) ? '<' : ((lsum == rsum) ? '=' : '>');
     }
 
-    int answer(const std::vector<int>& ds, bool confirm) const override {
-        assert(ds.size() == N);
-        if (confirm) assert(turn == Q);
-        else out << "#c ";
+    int answer(const std::vector<int>& ds) const override {
+        assert(ds.size() == N && turn == Q);
         std::vector<double> ts(D);
         for (int i = 0; i < N; i++) {
             out << ds[i] << ' ';
@@ -254,11 +244,6 @@ struct FileJudge : Judge {
         double mean = sum / D;
         double stdev = sqrt(sqsum / D - mean * mean);
         return 1 + (int)round(100 * stdev);
-    }
-
-    void comment(const std::string& str) const override {
-        std::cerr << "# " << str << '\n';
-        out << "# " << str << '\n';
     }
 
 };
@@ -316,9 +301,8 @@ struct LocalJudge : Judge {
         return (lsum < rsum) ? '<' : ((lsum == rsum) ? '=' : '>');
     }
 
-    int answer(const std::vector<int>& ds, bool confirm) const override {
-        assert(ds.size() == N);
-        if (confirm) assert(turn == Q);
+    int answer(const std::vector<int>& ds) const override {
+        assert(ds.size() == N && turn == Q);
         std::vector<double> ts(D);
         for (int i = 0; i < N; i++) {
             ts[ds[i]] += ws[i];
@@ -331,10 +315,6 @@ struct LocalJudge : Judge {
         double mean = sum / D;
         double stdev = sqrt(sqsum / D - mean * mean);
         return 1 + (int)round(100 * stdev);
-    }
-
-    void comment(const std::string& str) const override {
-        std::cerr << "# " << str << '\n';
     }
 
 };
@@ -558,17 +538,11 @@ struct Solver {
 
     std::vector<int> grouping(const std::vector<int>& ws, Xorshift& rnd, const double duration) const {
 
-        double start_time = timer.elapsed_ms(), end_time = start_time + duration;
-
         std::vector<int> ds(N);
         for (int i = 0; i < N; i++) ds[i] = i % D;
 
-        judge->answer(ds);
-
-        int loop = 0;
         auto cost = calc_var(ws, ds);
-        while (timer.elapsed_ms() < end_time) {
-            loop++;
+        while (timer.elapsed_ms() < duration) {
             int r = rnd.next_int(2);
             if (r == 0) {
                 // swap
@@ -583,8 +557,7 @@ struct Solver {
                 }
                 else {
                     cost = ncost;
-                    judge->answer(ds);
-                    judge->comment(format("loop=%6d, cost=%.2f (swap)", loop, cost));
+                    dump(cost);
                 }
             }
             else {
@@ -602,82 +575,25 @@ struct Solver {
                 }
                 else {
                     cost = ncost;
-                    judge->answer(ds);
-                    judge->comment(format("loop=%6d, cost=%.2f (change)", loop, cost));
+                    dump(cost);
                 }
             }
         }
-        judge->comment(format("loop=%6d, cost=%.2f", loop, cost));
 
         return ds;
     }
 
-    std::vector<int> order_preserving_climb(const std::vector<int>& ord, Xorshift& rnd, double duration) {
-        double start_time = timer.elapsed_ms(), end_time = start_time + duration;
-        auto ws = create_weights(ord);
-        int score = compute_score(ws);
-        int loop = 0;
-        while (timer.elapsed_ms() < end_time && score < cmps.size()) {
-            loop++;
-            int type = rnd.next_int(10);
-            if (type < 9) {
-                // change single
-                int nth = rnd.next_int(N);
-                int lo = (nth == 0 ? 0 : ws[ord[nth - 1]]);
-                int hi = (nth == N - 1 ? (int)floor(thresh) : ws[ord[nth + 1]]);
-                int pval = ws[ord[nth]];
-                if (hi - 1 < lo + 1) continue;
-                int nval = rnd.next_int(lo + 1, hi - 1);
-                ws[ord[nth]] = nval;
-                int nscore = compute_score(ws);
-                if (nscore < score) {
-                    ws[ord[nth]] = pval;
-                }
-                else {
-                    score = nscore;
-                }
-            }
-            else {
-                // change range
-                int left, right; // inclusive
-                do {
-                    left = rnd.next_int(N);
-                    right = rnd.next_int(N);
-                } while (right <= left);
-                int lo = (left == 0 ? 0 : ws[ord[left - 1]]), lo_diff = ws[ord[left]] - lo - 1;
-                int hi = (right == N - 1 ? (int)floor(thresh) : ws[ord[right + 1]]), hi_diff = hi - ws[ord[right]] - 1;
-                if (lo <= 0 || hi <= 0) continue;
-                int diff = rnd.next_int(-lo_diff, hi_diff);
-                for (int nth = left; nth <= right; nth++) {
-                    ws[ord[nth]] += diff;
-                }
-                int nscore = compute_score(ws);
-                if (nscore < score) {
-                    for (int nth = left; nth <= right; nth++) {
-                        ws[ord[nth]] -= diff;
-                    }
-                }
-                else {
-                    score = nscore;
-                }
-            }
-            if (!(loop & 0xFFF)) judge->comment(format("loop=%6d, score=%4d/%4lld", loop, score, cmps.size()));
-        }
-        judge->comment(format("loop=%6d, score=%4d/%4lld", loop, score, cmps.size()));
-        return ws;
-    }
+
 
     int solve(const double duration) {
 
         Timer timer;
 
-        judge->comment(format("N=%3d, D=%2d, Q=%4d", judge->N, judge->D, judge->Q));
-
         std::vector<int> ord;
         if (NFordJohnson::cap[judge->N] <= judge->Q) {
-            judge->comment("sortable");
+            // sortable
+            dump("sortable");
             ord = NFordJohnson::merge_insertion_sort(judge);
-            judge->comment(format("cmp=%3d, Q=%4d", judge->turn, judge->Q));
         }
 
         std::vector<int> perm(N);
@@ -695,13 +611,25 @@ struct Solver {
             cmps += judge->query(L, R);
             shuffle_vector(perm, rnd);
         }
-        judge->comment(format("additional conditions: %4lld", cmps.size()));
+        dump(cmps.size());
 
         std::vector<int> ws;
 
         const double time_phase1_end = duration * 0.75;
         if (NFordJohnson::cap[judge->N] <= judge->Q) {
-            ws = order_preserving_climb(ord, rnd, time_phase1_end - timer.elapsed_ms());
+            ws = create_weights(ord);
+            auto score = compute_score(ws);
+            int loop = 0;
+            while (timer.elapsed_ms() < time_phase1_end) {
+                loop++;
+                auto nws = create_weights(ord);
+                auto nscore = compute_score(nws);
+                if (chmax(score, nscore)) {
+                    ws = nws;
+                    dump(score, cmps.size());
+                }
+            }
+            dump(loop, score, cmps.size());
         }
         else {
             ws = create_weights();
@@ -743,18 +671,22 @@ struct Solver {
                         score = nscore;
                     }
                 }
-                if (!(loop & 0xFFF)) {
-                    judge->comment(format("loop=%6d, score=%4d/%4lld", loop, score, cmps.size()));
-                }
+                if (!(loop & 0xFFF)) dump(loop, score);
             }
-            judge->comment(format("loop=%6d, score=%4d/%4lld", loop, score, cmps.size()));
+            dump(loop, score, Q);
         }
 
-        auto group = grouping(ws, rnd, std::min(500.0, duration - timer.elapsed_ms()));
+        auto group = grouping(ws, rnd, duration);
 
-        auto cost = judge->answer(group, true);
+        auto cost = judge->answer(group);
 
-        judge->comment(format("final score=%d", cost));
+        dump(cost);
+
+        if (auto j = std::dynamic_pointer_cast<FileJudge>(judge)) {
+
+            dump(j->ws);
+            dump(ws);
+        }
 
         return cost;
     }
@@ -819,10 +751,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     cv::utils::logging::setLogLevel(cv::utils::logging::LogLevel::LOG_LEVEL_SILENT);
 #endif
 
-#if 1
-    std::ifstream ifs("../../tools_win/in/0001.txt");
+#if 0
+    std::ifstream ifs("../../tools_win/in/0000.txt");
     std::istream& in = ifs;
-    std::ofstream ofs("../../tools_win/out/0001.txt");
+    std::ofstream ofs("../../tools_win/out/0000.txt");
     std::ostream& out = ofs;
     auto judge = std::make_shared<FileJudge>(in, out);
 #else
@@ -833,8 +765,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 
     Solver solver(judge);
     solver.solve(1980 - timer.elapsed_ms());
-
-    judge->comment(format("elapsed=%.2f ms", timer.elapsed_ms()));
 
     return 0;
 }

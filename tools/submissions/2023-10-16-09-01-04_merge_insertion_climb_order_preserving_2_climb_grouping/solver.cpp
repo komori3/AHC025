@@ -819,10 +819,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     cv::utils::logging::setLogLevel(cv::utils::logging::LogLevel::LOG_LEVEL_SILENT);
 #endif
 
-#if 1
-    std::ifstream ifs("../../tools_win/in/0001.txt");
+#if 0
+    std::ifstream ifs("../../tools_win/in/0009.txt");
     std::istream& in = ifs;
-    std::ofstream ofs("../../tools_win/out/0001.txt");
+    std::ofstream ofs("../../tools_win/out/0009.txt");
     std::ostream& out = ofs;
     auto judge = std::make_shared<FileJudge>(in, out);
 #else

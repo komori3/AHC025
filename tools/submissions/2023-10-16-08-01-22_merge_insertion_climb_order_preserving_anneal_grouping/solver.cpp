@@ -558,7 +558,8 @@ struct Solver {
 
     std::vector<int> grouping(const std::vector<int>& ws, Xorshift& rnd, const double duration) const {
 
-        double start_time = timer.elapsed_ms(), end_time = start_time + duration;
+        double start_time = timer.elapsed_ms(), now_time, end_time = start_time + duration;
+        const double start_temp = 0.2, end_temp = 0.0;
 
         std::vector<int> ds(N);
         for (int i = 0; i < N; i++) ds[i] = i % D;
@@ -566,9 +567,13 @@ struct Solver {
         judge->answer(ds);
 
         int loop = 0;
-        auto cost = calc_var(ws, ds);
-        while (timer.elapsed_ms() < end_time) {
+        auto cost = log(1.0 + calc_var(ws, ds));
+        while ((now_time = timer.elapsed_ms()) < end_time) {
             loop++;
+            if (!(loop & 0xFFFF)) {
+                judge->answer(ds);
+                judge->comment(format("loop=%6d, cost=%.2f", loop, cost));
+            }
             int r = rnd.next_int(2);
             if (r == 0) {
                 // swap
@@ -578,14 +583,25 @@ struct Solver {
                 } while (ds[i] == ds[j]);
                 std::swap(ds[i], ds[j]);
                 auto ncost = calc_var(ws, ds);
-                if (ncost < 0 || cost < ncost) {
+                if (ncost < 0) {
                     std::swap(ds[i], ds[j]);
+                    continue;
+                }
+                ncost = log(1.0 + ncost);
+                double diff = ncost - cost;
+                double temp = get_temp(start_temp, end_temp, now_time - start_time, end_time - start_time);
+                double prob = exp(-diff / temp);
+                if (rnd.next_double() < prob) {
+                    cost = ncost;
                 }
                 else {
-                    cost = ncost;
-                    judge->answer(ds);
-                    judge->comment(format("loop=%6d, cost=%.2f (swap)", loop, cost));
+                    std::swap(ds[i], ds[j]);
                 }
+                //else {
+                //    cost = ncost;
+                //    judge->answer(ds);
+                //    judge->comment(format("loop=%6d, cost=%.2f (swap)", loop, cost));
+                //}
             }
             else {
                 // change
@@ -597,14 +613,25 @@ struct Solver {
                 } while (d == pd);
                 ds[i] = d;
                 auto ncost = calc_var(ws, ds);
-                if (ncost < 0 || cost < ncost) {
+                if (ncost < 0) {
                     ds[i] = pd;
+                    continue;
+                }
+                ncost = log(1.0 + ncost);
+                double diff = ncost - cost;
+                double temp = get_temp(start_temp, end_temp, now_time - start_time, end_time - start_time);
+                double prob = exp(-diff / temp);
+                if (rnd.next_double() < prob) {
+                    cost = ncost;
                 }
                 else {
-                    cost = ncost;
-                    judge->answer(ds);
-                    judge->comment(format("loop=%6d, cost=%.2f (change)", loop, cost));
+                    ds[i] = pd;
                 }
+                //else {
+                //    cost = ncost;
+                //    judge->answer(ds);
+                //    judge->comment(format("loop=%6d, cost=%.2f (change)", loop, cost));
+                //}
             }
         }
         judge->comment(format("loop=%6d, cost=%.2f", loop, cost));
@@ -619,51 +646,23 @@ struct Solver {
         int loop = 0;
         while (timer.elapsed_ms() < end_time && score < cmps.size()) {
             loop++;
-            int type = rnd.next_int(10);
-            if (type < 9) {
-                // change single
-                int nth = rnd.next_int(N);
-                int lo = (nth == 0 ? 0 : ws[ord[nth - 1]]);
-                int hi = (nth == N - 1 ? (int)floor(thresh) : ws[ord[nth + 1]]);
-                int pval = ws[ord[nth]];
-                if (hi - 1 < lo + 1) continue;
-                int nval = rnd.next_int(lo + 1, hi - 1);
-                ws[ord[nth]] = nval;
-                int nscore = compute_score(ws);
-                if (nscore < score) {
-                    ws[ord[nth]] = pval;
-                }
-                else {
-                    score = nscore;
-                }
+            // change
+            int nth = rnd.next_int(N);
+            int lo = (nth == 0 ? 0 : ws[ord[nth - 1]]);
+            int hi = (nth == N - 1 ? (int)floor(thresh) : ws[ord[nth + 1]]);
+            int pval = ws[ord[nth]];
+            if (hi - 1 < lo + 1) continue;
+            int nval = rnd.next_int(lo + 1, hi - 1);
+            ws[ord[nth]] = nval;
+            int nscore = compute_score(ws);
+            if (nscore < score) {
+                ws[ord[nth]] = pval;
             }
             else {
-                // change range
-                int left, right; // inclusive
-                do {
-                    left = rnd.next_int(N);
-                    right = rnd.next_int(N);
-                } while (right <= left);
-                int lo = (left == 0 ? 0 : ws[ord[left - 1]]), lo_diff = ws[ord[left]] - lo - 1;
-                int hi = (right == N - 1 ? (int)floor(thresh) : ws[ord[right + 1]]), hi_diff = hi - ws[ord[right]] - 1;
-                if (lo <= 0 || hi <= 0) continue;
-                int diff = rnd.next_int(-lo_diff, hi_diff);
-                for (int nth = left; nth <= right; nth++) {
-                    ws[ord[nth]] += diff;
-                }
-                int nscore = compute_score(ws);
-                if (nscore < score) {
-                    for (int nth = left; nth <= right; nth++) {
-                        ws[ord[nth]] -= diff;
-                    }
-                }
-                else {
-                    score = nscore;
-                }
+                score = nscore;
             }
             if (!(loop & 0xFFF)) judge->comment(format("loop=%6d, score=%4d/%4lld", loop, score, cmps.size()));
         }
-        judge->comment(format("loop=%6d, score=%4d/%4lld", loop, score, cmps.size()));
         return ws;
     }
 
@@ -750,7 +749,7 @@ struct Solver {
             judge->comment(format("loop=%6d, score=%4d/%4lld", loop, score, cmps.size()));
         }
 
-        auto group = grouping(ws, rnd, std::min(500.0, duration - timer.elapsed_ms()));
+        auto group = grouping(ws, rnd, std::min(300.0, duration - timer.elapsed_ms()));
 
         auto cost = judge->answer(group, true);
 
@@ -819,10 +818,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     cv::utils::logging::setLogLevel(cv::utils::logging::LogLevel::LOG_LEVEL_SILENT);
 #endif
 
-#if 1
-    std::ifstream ifs("../../tools_win/in/0001.txt");
+#if 0
+    std::ifstream ifs("../../tools_win/in/0005.txt");
     std::istream& in = ifs;
-    std::ofstream ofs("../../tools_win/out/0001.txt");
+    std::ofstream ofs("../../tools_win/out/0005.txt");
     std::ostream& out = ofs;
     auto judge = std::make_shared<FileJudge>(in, out);
 #else

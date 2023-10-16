@@ -1,5 +1,7 @@
 .vs
-tools
-tools_win
+tools/*
+tools_win/*
 vs/*/bin
 vs/*/obj
+!tools/submissions
+tools/submissions/*/out
