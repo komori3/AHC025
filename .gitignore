@@ -1,8 +1,7 @@
 .vs
+scripts/venv
+submissions/*/out
 tools/*
 tools_win/*
 vs/*/bin
 vs/*/obj
-!tools/submissions
-tools/submissions/*/out
-scripts/venv
