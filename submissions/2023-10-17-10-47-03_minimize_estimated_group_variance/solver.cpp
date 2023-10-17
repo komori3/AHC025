@@ -257,7 +257,7 @@ struct FileJudge : Judge {
     }
 
     void comment(const std::string& str) const override {
-        //std::cerr << "# " << str << '\n';
+        std::cerr << "# " << str << '\n';
         out << "# " << str << '\n';
     }
 
@@ -509,9 +509,9 @@ struct Solver {
         thresh = 1e5 * N / D;
     }
 
-    std::vector<Items> create_items(double ratio) const {
+    std::vector<Items> create_items() const {
         std::vector<Items> items;
-        if (NFordJohnson::cap[N] <= Q * ratio) {
+        if (NFordJohnson::cap[N] <= Q * 3 / 5) {
             judge->comment("sortable");
             for (int i = 0; i < N; i++) {
                 items.emplace_back(i, std::vector<int>({ i }));
@@ -519,7 +519,7 @@ struct Solver {
         }
         else {
             int K = N;
-            while (Q * ratio < NFordJohnson::cap[K]) K--;
+            while (Q * 3 / 5 < NFordJohnson::cap[K]) K--;
             judge->comment(format("need to compress: %d -> %d", N, K));
             for (int k = 0; k < K; k++) {
                 items.emplace_back(k, std::vector<int>());
@@ -679,7 +679,7 @@ struct Solver {
         Timer timer;
         judge->comment(format("N=%3d, D=%2d, Q=%4d", judge->N, judge->D, judge->Q));
 
-        const auto items = create_items(0.7);
+        const auto items = create_items();
         const auto items_sorted = NFordJohnson::merge_insertion_sort(judge, items);
         judge->comment(format("cmp=%3d, Q=%4d", judge->turn, judge->Q));
 
@@ -804,19 +804,11 @@ struct Solver {
         return cost;
     }
 
-    int solve() {
-        double z = 0.001558045543105 * N + 0.139673100241650 * D - 0.000299970795501 * Q + 1.067684089564561;
-        z = 1.0 / (1.0 + exp(-z));
-        if (z < 0.5) return solve(0);
-        return solve(1);
-    }
-
 };
 
 
 void batch_execution() {
 
-#if 0
     constexpr int num_seeds = 10000;
     
     std::vector<std::tuple<int, int, int, int>> NDQS(num_seeds);
@@ -858,31 +850,6 @@ void batch_execution() {
     for (const auto& [N, D, Q, C] : NDQS) {
         ofs << N << ' ' << D << ' ' << Q << ' ' << C << '\n';
     }
-#else
-    constexpr int num_seeds = 100;
-
-    int progress = 0;
-    size_t score_sum = 0;
-#pragma omp parallel for num_threads(8)
-    for (int seed = 0; seed < num_seeds; seed++) {
-
-        std::ifstream ifs(format("../../tools_win/in/%04d.txt", seed));
-        std::ofstream ofs(format("../../tools_win/out/%04d.txt", seed));
-
-        auto judge = std::make_shared<FileJudge>(ifs, ofs);
-        Solver solver(judge);
-        auto score = solver.solve();
-        
-#pragma omp critical(crit_sct)
-        {
-            progress++;
-            score_sum += score;
-            std::cerr << format("\rprogress=%5d/%5d, mean=%f", progress, num_seeds, double(score_sum) / progress);
-        }
-    }
-
-    std::cerr << '\n';
-#endif
 
 }
 
@@ -913,9 +880,16 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 #endif
 
     Solver solver(judge);
-    auto score = solver.solve();
 
-    judge->comment(format("elapsed=%.2f ms, score=%d", timer.elapsed_ms(), score));
+    // logistic regression
+    int N = judge->N, D = judge->D, Q = judge->Q;
+    double z = 0.001558045543105 * N + 0.139673100241650 * D - 0.000299970795501 * Q + 1.067684089564561;
+    z = 1.0 / (1.0 + exp(-z));
+
+    if (z < 0.5) solver.solve(0);
+    else solver.solve(1);
+
+    judge->comment(format("elapsed=%.2f ms", timer.elapsed_ms()));
 
     return 0;
 }
