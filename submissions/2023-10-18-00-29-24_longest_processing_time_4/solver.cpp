@@ -910,10 +910,6 @@ struct Solver {
         }
         else {
 
-            // TODO: 最初ある程度比較サボってもいいのでは
-            // TODO: マージ方法によってソート回数が変わるかどうかチェック
-            // TODO: 既存のクエリによって大小関係が明らかな場合は比較をしないようにする
-
             auto blobs = create_blobs_2(0.92);
             blobs = NFordJohnson::merge_insertion_sort(judge, blobs);
             judge->comment(format("cmp=%3d, Q=%4d", judge->turn, judge->Q));

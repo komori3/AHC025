@@ -910,11 +910,7 @@ struct Solver {
         }
         else {
 
-            // TODO: 最初ある程度比較サボってもいいのでは
-            // TODO: マージ方法によってソート回数が変わるかどうかチェック
-            // TODO: 既存のクエリによって大小関係が明らかな場合は比較をしないようにする
-
-            auto blobs = create_blobs_2(0.92);
+            auto blobs = create_blobs_2(0.86);
             blobs = NFordJohnson::merge_insertion_sort(judge, blobs);
             judge->comment(format("cmp=%3d, Q=%4d", judge->turn, judge->Q));
 
@@ -1132,15 +1128,11 @@ struct Solver {
     }
 
     int solve() {
-        double z1 = -0.022032378383980 * N -0.003383287005928 * D + 0.001410553669226 * Q + 1.984741935012038;
-        z1 = 1.0 / (1.0 + exp(-z1));
-        if (z1 < 0.5) {
-            double z2 = -0.001543608605579 * N + 0.133620034613790 * D - 0.000116499887615 * Q + 1.048466672418671;
-            z2 = 1.0 / (1.0 + exp(-z2));
-            if (z2 < 0.5) return solve(0);
-            return solve(1);
-        }
-        return solve(2);
+        //double z = 0.001558045543105 * N + 0.139673100241650 * D - 0.000299970795501 * Q + 1.067684089564561;
+        double z = -0.001543608605579 * N + 0.133620034613790 * D - 0.000116499887615 * Q + 1.048466672418671;
+        z = 1.0 / (1.0 + exp(-z));
+        if (z < 0.5) return solve(0);
+        return solve(1);
     }
 
     int calc_oracle_score() {
@@ -1181,40 +1173,40 @@ void batch_execution() {
 
         std::vector<std::tuple<int, int, int, int>> NDQS(num_seeds);
 
-        int progress = 0, num01 = 0, num2 = 0;
+        int progress = 0, num1 = 0, num2 = 0;
 #pragma omp parallel for num_threads(8)
         for (int seed = 0; seed < num_seeds; seed++) {
 
-            int N, D, Q, score01, score2;
+            int N, D, Q, score1, score2;
             {
                 auto judge = std::make_shared<LocalJudge>(seed);
                 N = judge->N;
                 D = judge->D;
                 Q = judge->Q;
                 Solver solver(judge);
-                score01 = solver.solve();
+                score1 = solver.solve(0);
             }
             {
                 auto judge = std::make_shared<LocalJudge>(seed);
                 assert(N == judge->N && D == judge->D && Q == judge->Q);
                 Solver solver(judge);
-                score2 = solver.solve(2);
+                score2 = solver.solve(1);
             }
 
 #pragma omp critical(crit_sct)
             {
-                NDQS[seed] = { N, D, Q, score01 < score2 ? 0 : 1 };
-                (score01 < score2 ? num01 : num2)++;
+                NDQS[seed] = { N, D, Q, score1 < score2 ? 1 : 2 };
+                (score1 < score2 ? num1 : num2)++;
                 progress++;
                 std::cerr << format("\rprogress=%5d/%5d, num1=%5d, num2=%5d",
-                    progress, num_seeds, num01, num2
+                    progress, num_seeds, num1, num2
                 );
             }
         }
 
         std::cerr << '\n';
 
-        std::ofstream ofs("plot5.txt");
+        std::ofstream ofs("plot4.txt");
         for (const auto& [N, D, Q, C] : NDQS) {
             ofs << N << ' ' << D << ' ' << Q << ' ' << C << '\n';
         }
@@ -1222,21 +1214,20 @@ void batch_execution() {
     }
 
     if (true) {
-        constexpr int num_seeds = 10000;
+        constexpr int num_seeds = 100;
 
         int progress = 0;
         size_t score_sum = 0;
 #pragma omp parallel for num_threads(8)
         for (int seed = 0; seed < num_seeds; seed++) {
-#if 0
+
             std::ifstream ifs(format("../../tools_win/in/%04d.txt", seed));
             std::ofstream ofs(format("../../tools_win/out/%04d.txt", seed));
+
             auto judge = std::make_shared<FileJudge>(ifs, ofs);
-#else
-            auto judge = std::make_shared<LocalJudge>(seed);
             Solver solver(judge);
-            auto score = solver.solve();
-#endif
+            auto score = solver.solve(2);
+
 #pragma omp critical(crit_sct)
             {
                 progress++;
@@ -1332,7 +1323,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 #endif
 
     Solver solver(judge);
-    auto score = solver.solve();
+    auto score = solver.solve(2);
 
     judge->comment(format("elapsed=%.2f ms, score=%d", timer.elapsed_ms(), score));
 

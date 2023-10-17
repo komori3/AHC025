@@ -8,7 +8,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 if __name__ == '__main__':
 
-    with open('../vs/solver/plot3.txt', 'r', encoding='utf-8') as f:
+    with open('../vs/solver/plot5.txt', 'r', encoding='utf-8') as f:
         lines = [line for line in str(f.read()).split('\n') if not line == '']
         
     fig = plt.figure()
@@ -31,7 +31,6 @@ if __name__ == '__main__':
     X[:,2] = zs
     
     Y = np.array(cs)
-    Y -= 1
     
     clf = LogisticRegression().fit(X, Y)
 

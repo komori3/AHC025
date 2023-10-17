@@ -910,11 +910,7 @@ struct Solver {
         }
         else {
 
-            // TODO: 最初ある程度比較サボってもいいのでは
-            // TODO: マージ方法によってソート回数が変わるかどうかチェック
-            // TODO: 既存のクエリによって大小関係が明らかな場合は比較をしないようにする
-
-            auto blobs = create_blobs_2(0.92);
+            auto blobs = create_blobs_2(0.86);
             blobs = NFordJohnson::merge_insertion_sort(judge, blobs);
             judge->comment(format("cmp=%3d, Q=%4d", judge->turn, judge->Q));
 
@@ -1222,21 +1218,20 @@ void batch_execution() {
     }
 
     if (true) {
-        constexpr int num_seeds = 10000;
+        constexpr int num_seeds = 100;
 
         int progress = 0;
         size_t score_sum = 0;
 #pragma omp parallel for num_threads(8)
         for (int seed = 0; seed < num_seeds; seed++) {
-#if 0
+
             std::ifstream ifs(format("../../tools_win/in/%04d.txt", seed));
             std::ofstream ofs(format("../../tools_win/out/%04d.txt", seed));
+
             auto judge = std::make_shared<FileJudge>(ifs, ofs);
-#else
-            auto judge = std::make_shared<LocalJudge>(seed);
             Solver solver(judge);
-            auto score = solver.solve();
-#endif
+            auto score = solver.solve(2);
+
 #pragma omp critical(crit_sct)
             {
                 progress++;

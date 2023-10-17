@@ -805,7 +805,8 @@ struct Solver {
     }
 
     int solve() {
-        double z = 0.001558045543105 * N + 0.139673100241650 * D - 0.000299970795501 * Q + 1.067684089564561;
+        //double z = 0.001558045543105 * N + 0.139673100241650 * D - 0.000299970795501 * Q + 1.067684089564561;
+        double z = -0.001543608605579 * N + 0.133620034613790 * D - 0.000116499887615 * Q + 1.048466672418671;
         z = 1.0 / (1.0 + exp(-z));
         if (z < 0.5) return solve(0);
         return solve(1);
@@ -854,7 +855,7 @@ void batch_execution() {
 
     std::cerr << '\n';
 
-    std::ofstream ofs("plot3.txt");
+    std::ofstream ofs("plot4.txt");
     for (const auto& [N, D, Q, C] : NDQS) {
         ofs << N << ' ' << D << ' ' << Q << ' ' << C << '\n';
     }
