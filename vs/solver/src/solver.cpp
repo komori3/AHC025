@@ -190,7 +190,7 @@ struct ServerJudge : Judge {
     }
 
     int answer(const std::vector<int>& ds, bool confirm) const override {
-        assert(ds.size() == N);
+        assert((int)ds.size() == N);
         if (confirm) assert(turn == Q);
         else out << "#c ";
         for (int d : ds) out << d << ' ';
@@ -237,7 +237,7 @@ struct FileJudge : Judge {
     }
 
     int answer(const std::vector<int>& ds, bool confirm) const override {
-        assert(ds.size() == N);
+        assert((int)ds.size() == N);
         if (confirm) assert(turn == Q);
         else out << "#c ";
         std::vector<double> ts(D);
@@ -317,7 +317,7 @@ struct LocalJudge : Judge {
     }
 
     int answer(const std::vector<int>& ds, bool confirm) const override {
-        assert(ds.size() == N);
+        assert((int)ds.size() == N);
         if (confirm) assert(turn == Q);
         std::vector<double> ts(D);
         for (int i = 0; i < N; i++) {
@@ -333,7 +333,7 @@ struct LocalJudge : Judge {
         return 1 + (int)round(100 * stdev);
     }
 
-    void comment(const std::string& str) const override {
+    void comment(const std::string&) const override {
         //std::cerr << "# " << str << '\n';
     }
 
@@ -426,7 +426,7 @@ namespace NFordJohnson {
             main_chain.emplace_back(v.begin() + M, v.end()); // b0
             main_chain.emplace_back(v.begin(), v.begin() + M); // a0
         }
-        for (int i = 1; i < ngroups.size(); i++) {
+        for (int i = 1; i < (int)ngroups.size(); i++) {
             const auto& v = ngroups[i];
             bs.emplace_back(v.begin() + M, v.end()); // bi
             main_chain.emplace_back(v.begin(), v.begin() + M); // ai
@@ -438,7 +438,7 @@ namespace NFordJohnson {
         }
 
         int begin = 0;
-        for (int i = 0; begin < bs.size(); i++) {
+        for (int i = 0; begin < (int)bs.size(); i++) {
             int end = std::min(begin + jacobsthal_diff[i], bs.size());
 
             for (int j = end - 1; j >= begin; j--) {
@@ -447,7 +447,7 @@ namespace NFordJohnson {
                 // main chain から key を探して、二分探索
                 int left = -1, right = (int)main_chain.size();
                 if (key != -1) {
-                    for (int k = 0; k < main_chain.size(); k++) {
+                    for (int k = 0; k < (int)main_chain.size(); k++) {
                         if (main_chain[k].front()->id == key) {
                             right = k;
                             break;
@@ -470,6 +470,7 @@ namespace NFordJohnson {
                 // insert to right
                 main_chain.insert(main_chain.begin() + right, b);
 
+#if 0
                 if (auto ljudge = std::dynamic_pointer_cast<LocalJudge>(judge)) {
                     for (int i = 1; i < main_chain.size(); i++) {
                         int lsum = 0, rsum = 0;
@@ -478,6 +479,7 @@ namespace NFordJohnson {
                         assert(lsum <= rsum);
                     }
                 }
+#endif
             }
 
             begin = end;
@@ -1308,9 +1310,6 @@ void batch_execution() {
 int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 
     //batch_execution();
-    //exit(1);
-
-    //NFordJohnson::test();
     //exit(1);
 
     Timer timer;
