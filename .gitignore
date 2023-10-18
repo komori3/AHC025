@@ -1,6 +1,7 @@
 .vs
 scripts/venv
 submissions/*/out
+submissions/*/err
 tools/*
 tools_win/*
 vs/*/bin

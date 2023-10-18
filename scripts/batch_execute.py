@@ -17,6 +17,7 @@ SUBMISSIONS_DIR = os.path.join(ROOT_DIR, 'submissions')
 
 INPUT_DIR = os.path.join(TOOLS_DIR, 'in')
 OUTPUT_DIR = os.path.join(TOOLS_DIR, 'out')
+ERROR_DIR = os.path.join(TOOLS_DIR, 'err')
 
 SOLVER_DIR = os.path.join(ROOT_DIR, 'vs', 'solver')
 SOURCE_FILE = os.path.join(SOLVER_DIR, 'src', 'solver.cpp')
@@ -40,6 +41,7 @@ def run_wrapper(cmd: str):
     subprocess.run(cmd, shell=True)
 
 def build_solver():
+    exec_bin = os.path.join(SCRIPTS_DIR, 'solver.out')
     cmd = f'\
         g++-12 -std=gnu++20 -O2 -Wall -Wextra \
         -mtune=native -march=native \
@@ -47,6 +49,8 @@ def build_solver():
         -o {SCRIPTS_DIR}/solver.out {SOURCE_FILE} \
         '
     subprocess.run(cmd, shell=True)
+    assert os.path.exists(exec_bin)
+    return exec_bin
 
 if __name__ == '__main__':
 
@@ -62,17 +66,27 @@ if __name__ == '__main__':
         shutil.rmtree(OUTPUT_DIR)
     os.makedirs(OUTPUT_DIR)
 
-    build_solver()
-    exec_bin = f'{SCRIPTS_DIR}/solver.out'
+    if os.path.exists(ERROR_DIR):
+        shutil.rmtree(ERROR_DIR)
+    os.makedirs(ERROR_DIR)
+
+    exec_bin = build_solver()
 
     assert os.path.exists(exec_bin)
     assert os.path.exists(TESTER_BIN)
 
+    assert os.path.exists(os.path.join(TOOLS_DIR, 'seeds.txt'))
+    with open(os.path.join(TOOLS_DIR, 'seeds.txt'), 'r', encoding='utf-8') as f:
+        seeds = [int(line) for line in str(f.read()).split('\n') if not line == '']
+    
+    assert type(seeds[0]) == int
+
     cmds = []
-    for seed in range(0, 100):
+    for seed in seeds:
         input_file = os.path.join(INPUT_DIR, f'{seed:04d}.txt')
-        output_file = os.path.join(OUTPUT_DIR, f'{seed:04d}.out')
-        error_file = os.path.join(OUTPUT_DIR, f'{seed:04d}.err')
+        assert os.path.exists(input_file)
+        output_file = os.path.join(OUTPUT_DIR, f'{seed:04d}.txt')
+        error_file = os.path.join(ERROR_DIR, f'{seed:04d}.txt')
         cmd = f'{TESTER_BIN} {exec_bin} < {input_file} > {output_file} 2> {error_file}'
         cmds.append(cmd)
 
@@ -81,8 +95,8 @@ if __name__ == '__main__':
 
     results = []
     key_list = ['Score']
-    for seed in range(0, 100):
-        error_file = os.path.join(OUTPUT_DIR, f'{seed:04d}.err')
+    for seed in seeds:
+        error_file = os.path.join(ERROR_DIR, f'{seed:04d}.txt')
         result = dict()
         result['Seed'] = seed
         result['Score'] = -1
@@ -92,6 +106,7 @@ if __name__ == '__main__':
     submission_dir = os.path.join(SUBMISSIONS_DIR, tag)
     os.makedirs(submission_dir)
     shutil.copytree(OUTPUT_DIR, os.path.join(submission_dir, 'out'))
+    shutil.copytree(ERROR_DIR, os.path.join(submission_dir, 'err'))
     shutil.copy2(SOURCE_FILE, submission_dir)
     with open(os.path.join(submission_dir, 'results.yaml'), 'w', encoding='utf-8') as f:
         yaml.dump(results, f, sort_keys=False)

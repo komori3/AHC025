@@ -51,7 +51,7 @@ if __name__ == "__main__":
     for tag, results in tag_to_results.items():
         for result in results:
             seed, score = result['Seed'], result['Score']
-            if score == 0: continue
+            if score <= 0: continue
             if score == seed_to_best_score[seed]:
                 seed_to_unique_tag[seed] = ''
             if score < seed_to_best_score[seed]:
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         for result in results:
             ctr += 1
             seed, score = result['Seed'], result['Score']
-            if score == 0: continue
+            if score <= 0: continue
             # dict_submission_to_total_score[tag] += seed_best[result['Seed']] / result['Score']
             # dict_submission_to_total_score[tag] += math.log(result['Score'])
             tag_to_total_score[tag] += score
