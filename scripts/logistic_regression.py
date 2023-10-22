@@ -8,7 +8,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 if __name__ == '__main__':
 
-    with open('plots/plot5.txt', 'r', encoding='utf-8') as f:
+    with open('plots/plot6.txt', 'r', encoding='utf-8') as f:
         lines = [line for line in str(f.read()).split('\n') if not line == '']
         
     fig = plt.figure()

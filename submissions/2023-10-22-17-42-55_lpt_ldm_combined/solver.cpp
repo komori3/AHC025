@@ -1443,33 +1443,7 @@ struct Solver {
         // TODO: マージ方法によってソート回数が変わるかどうかチェック
         // TODO: 既存のクエリによって大小関係が明らかな場合は比較をしないようにする
 
-        int seed = 0;
-        double sum0 = 0.0, sum1 = 0.0;
-        while (timer.elapsed_ms() < 1000) {
-            {
-                auto lj = std::make_shared<LocalJudge>(seed, N, D, Q);
-                Solver s(lj);
-                sum0 += s.solve_lpt();
-            }
-            {
-                auto lj = std::make_shared<LocalJudge>(seed, N, D, Q);
-                Solver s(lj);
-                sum1 += s.solve_ldm();
-            }
-            seed++;
-        }
-        dump(seed, sum0, sum1);
-
-        if (sum0 < sum1) {
-            judge->comment("method: lpt");
-            return solve_lpt();
-        }
-        else {
-            judge->comment("method: ldm");
-            return solve_ldm();
-        }
-
-/*        int N = judge->N, D = judge->D, Q = judge->Q;
+        int N = judge->N, D = judge->D, Q = judge->Q;
         double z = -0.007901062188588 * N - 0.620226955360303 * D + 0.002580457479360 * Q + 2.567797539985801;
         z = 1.0 / (1.0 + exp(-z));
 
@@ -1480,7 +1454,7 @@ struct Solver {
         else {
             judge->comment("method: ldm");
             return solve_ldm();
-        } */       
+        }        
 
         return -1;
     }
@@ -1826,7 +1800,7 @@ void batch_execution() {
 
     }
 
-    if (false) {
+    if (true) {
         constexpr int num_seeds = 10000;
 
         int progress = 0;
@@ -1949,9 +1923,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 #endif
 
 #if 0
-    std::ifstream ifs("../../tools_win/in/0000.txt");
+    std::ifstream ifs("../../tools_win/in/0006.txt");
     std::istream& in = ifs;
-    std::ofstream ofs("../../tools_win/out/0000.txt");
+    std::ofstream ofs("../../tools_win/out/0006.txt");
     std::ostream& out = ofs;
     auto judge = std::make_shared<FileJudge>(in, out);
 #else
