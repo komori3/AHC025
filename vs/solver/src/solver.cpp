@@ -257,7 +257,7 @@ struct FileJudge : Judge {
     }
 
     void comment(const std::string& str) const override {
-        //std::cerr << "# " << str << '\n';
+        std::cerr << "# " << str << '\n';
         out << "# " << str << '\n';
     }
 
@@ -339,8 +339,6 @@ struct LocalJudge : Judge {
 
 };
 
-
-
 // struct for item set
 struct Blob;
 using BlobPtr = std::shared_ptr<Blob>;
@@ -365,6 +363,210 @@ std::ostream& operator<<(std::ostream& o, const BlobPtr& blob) {
     o << blob->stringify();
     return o;
 }
+
+namespace NSimplex {
+
+    int simplex_sub(
+        std::vector<std::vector<double>>& tbl,
+        std::vector<int>& basis
+    ) {
+
+        constexpr double eps = 1e-6;
+        const int nrows = tbl.size();
+        const int ncols = tbl.front().size();
+
+        auto& zrow = tbl.back();
+
+        auto choose_pivot_col = [&]() {
+            int pivot_col = std::numeric_limits<int>::max();
+            for (int col = 0; col < ncols - 1; col++) {
+                if (zrow[col] >= -eps) continue;
+                if (col < pivot_col) pivot_col = col;
+            }
+            return pivot_col;
+        };
+
+        auto choose_pivot_row = [&](const int pivot_col) {
+            int pivot_row = -1;
+            double lowest_increase = std::numeric_limits<int>::max();
+            int target_basis = std::numeric_limits<int>::max();
+            for (int row = 0; row < nrows - 1; row++) {
+                if (tbl[row][pivot_col] < eps) continue;
+                const double increase = tbl[row].back() / tbl[row][pivot_col];
+                if (abs(lowest_increase - increase) < eps && basis[row] < target_basis) {
+                    target_basis = basis[row];
+                    pivot_row = row;
+                }
+                else if (increase < lowest_increase) {
+                    lowest_increase = increase;
+                    target_basis = basis[row];
+                    pivot_row = row;
+                }
+            }
+            return pivot_row;
+        };
+
+        while (true) {
+
+            const int pivot_col = choose_pivot_col();
+            if (pivot_col == std::numeric_limits<int>::max()) {
+                //dump("optimal");
+                return 0;
+            }
+
+            const int pivot_row = choose_pivot_row(pivot_col);
+            if (pivot_row == -1) {
+                //dump("infinite");
+                return 1;
+            }
+
+            const double pivot_val = tbl[pivot_row][pivot_col];
+            for (int col = 0; col < ncols; col++) {
+                tbl[pivot_row][col] /= pivot_val;
+            }
+
+            //print_tableau(tbl, basis);
+
+            for (int row = 0; row < nrows; row++) {
+                if (row == pivot_row) continue;
+                const double coeff = tbl[row][pivot_col];
+                if (abs(coeff) < eps) continue;
+                for (int col = 0; col < ncols; col++) {
+                    tbl[row][col] -= tbl[pivot_row][col] * coeff;
+                }
+            }
+
+            basis[pivot_row] = pivot_col;
+
+            //print_tableau(tbl, basis);
+        }
+
+        assert(false);
+        return -1;
+    }
+
+    void create_artificial_problem(
+        const std::vector<std::vector<double>>& A,
+        const std::vector<double>& b,
+        std::vector<std::vector<double>>& tbl,
+        std::vector<int>& basis
+    ) {
+        // 制約条件の数だけ人工変数を導入し、人工変数の和を最小化する人工問題を作成する
+        // 行数 = 制約条件数 + 1(目的関数)
+        const int nrows = A.size() + 1;
+        // 列数 = 元問題の変数の個数 + 人工変数の個数(制約条件数) + 1(定数項)
+        const int ncols = A.front().size() + A.size() + 1;
+        // simplex tableau
+        tbl = std::vector<std::vector<double>>(nrows, std::vector<double>(ncols));
+        // index of basic variables
+        basis = std::vector<int>(nrows - 1);
+        std::iota(basis.begin(), basis.end(), (int)A.front().size()); // initially artificial variables are selected
+        // number of constraints in the original problem
+        const int ncols_orig = (int)A.front().size();
+        // fill tableau
+        for (int row = 0; row < (int)A.size(); row++) {
+            // from original problem
+            for (int col = 0; col < (int)A.front().size(); col++) {
+                tbl[row][col] = A[row][col];
+            }
+            // constant
+            tbl[row][ncols - 1] = b[row];
+            // if constant < 0
+            if (tbl[row][ncols - 1] < 0) {
+                for (auto& x : tbl[row]) x *= -1.0;
+            }
+            // artificial variable
+            tbl[row][ncols_orig + row] = 1;
+        }
+        // objective function: minimize sum of artificial variables
+        for (int col = ncols_orig; col < ncols_orig + (int)A.size(); col++) {
+            tbl[nrows - 1][col] = 1;
+        }
+
+        //print_tableau(tbl, basis);
+
+        // create a dictionary with artificial variables as basic variables
+        for (int row = 0; row < (int)A.size(); row++) {
+            for (int col = 0; col < ncols; col++) {
+                tbl[nrows - 1][col] -= tbl[row][col];
+            }
+        }
+
+        //print_tableau(tbl, basis);
+    }
+
+    bool is_feasible(
+        const std::vector<std::vector<double>>& A,
+        const std::vector<double>& b
+    ) {
+        constexpr double eps = 1e-4;
+        std::vector<std::vector<double>> tbl;
+        std::vector<int> basis;
+
+        create_artificial_problem(A, b, tbl, basis);
+
+        int res = simplex_sub(tbl, basis);
+        if (res != 0) {
+            dump(res, tbl.back().back());
+        }
+        assert(res == 0); // 人工問題は実行可能解が必ずあるはずなので
+
+        return abs(tbl.back().back()) < eps;
+    }
+
+}
+
+
+struct CachedComparator;
+using CachedComparatorPtr = std::shared_ptr<CachedComparator>;
+struct CachedComparator {
+
+    JudgePtr judge;
+
+    std::vector<std::vector<double>> A;
+
+    CachedComparator(JudgePtr judge_) : judge(judge_) {
+        const int N = judge->N;
+        A.resize(N, std::vector<double>(N));
+        for (int i = 0; i < N; i++) A[i][i] = 1.0;
+    }
+
+    bool less(const std::vector<int>& lhs, const std::vector<int>& rhs) {
+        // sum(lhs) < sum(rhs) であるか？
+        std::vector<double> b(A.size());
+        for (int i : rhs) b[i] = 1;
+        for (int i : lhs) b[i] = -1;
+        return NSimplex::is_feasible(A, b);
+    }
+    
+    char query(const std::vector<int>& lhs, const std::vector<int>& rhs) {
+
+        if (less(lhs, rhs)) {
+            judge->comment("skip");
+            return '<';
+        }
+        if (less(rhs, lhs)) {
+            judge->comment("skip");
+            return '>';
+        }
+
+        for (int i = 0; i < (int)A.size(); i++) A[i].push_back(0.0);
+
+        auto res = judge->query(lhs, rhs);
+
+        if (res == '>') {
+            for (int i : lhs) A[i].back() = 1.0;
+            for (int i : rhs) A[i].back() = -1.0;
+        }
+        else {
+            for (int i : lhs) A[i].back() = -1.0;
+            for (int i : rhs) A[i].back() = 1.0;
+        }
+
+        return res;
+    }
+
+};
 
 namespace NFordJohnson {
 
@@ -648,6 +850,8 @@ struct Solver {
         Timer timer;
         judge->comment(format("N=%3d, D=%2d, Q=%4d", judge->N, judge->D, judge->Q));
 
+        //auto comparator = std::make_shared<CachedComparator>(judge);
+
         Xorshift rnd;
 
         // TODO: 最初ある程度比較サボってもいいのでは
@@ -875,14 +1079,18 @@ struct Solver {
         return num_cmp_merge;
     }
 
-    int calc_oracle_score() {
-        if (auto j = std::dynamic_pointer_cast<ServerJudge>(judge)) return -1;
+    std::pair<int, int> calc_oracle_score_LPT() {
+        if (auto j = std::dynamic_pointer_cast<ServerJudge>(judge)) return { -1, -1 };
         std::vector<int> ws;
         if (auto j = std::dynamic_pointer_cast<FileJudge>(judge)) ws = j->ws;
         if (auto j = std::dynamic_pointer_cast<LocalJudge>(judge)) ws = j->ws;
         assert(!ws.empty());
 
+        int num_comp = 0;
+
         std::sort(ws.rbegin(), ws.rend());
+        num_comp += NFordJohnson::cap[ws.size()];
+
         std::vector<double> sums(D);
 
         auto cost = [&]() {
@@ -900,7 +1108,97 @@ struct Solver {
             sums[0] += w;
         }
 
-        return cost();
+        num_comp += est_merge_cost[N][D];
+
+        return { cost(), num_comp };
+    }
+
+    struct S {
+        int sum = 0;
+        std::vector<int> ws;
+        void push(int w) {
+            sum += w;
+            ws.push_back(w);
+        }
+        bool operator<(const S& rhs) const {
+            return sum < rhs.sum;
+        }
+        friend std::ostream& operator<<(std::ostream& o, const S& s) {
+            o << s.ws;
+            return o;
+        }
+    };
+
+    std::vector<S> merge(const std::vector<S>& lhs, const std::vector<S>& rhs) {
+        assert(lhs.size() == rhs.size());
+        int n = (int)lhs.size();
+        std::vector<S> res(n);
+        for (int i = 0; i < n; i++) {
+            for (int w : lhs[i].ws) {
+                res[i].push(w);
+            }
+            for (int w : rhs[n - i - 1].ws) {
+                res[i].push(w);
+            }
+        }
+        std::sort(res.begin(), res.end());
+        return res;
+    }
+
+    std::pair<int, int> calc_oracle_score_LDM() {
+
+        if (auto j = std::dynamic_pointer_cast<ServerJudge>(judge)) return { -1, -1 };
+        std::vector<int> ws;
+        if (auto j = std::dynamic_pointer_cast<FileJudge>(judge)) ws = j->ws;
+        if (auto j = std::dynamic_pointer_cast<LocalJudge>(judge)) ws = j->ws;
+        assert(!ws.empty());
+
+        int num_comp = 0;
+
+        std::sort(ws.rbegin(), ws.rend());
+        num_comp += NFordJohnson::cap[ws.size()];
+
+        std::vector<std::vector<S>> sets;
+        for (int w : ws) {
+            std::vector<S> set(D);
+            set.back().push(w);
+            sets.push_back(set);
+        }
+        std::reverse(sets.begin(), sets.end());
+
+        //dump(num_comp, sets);
+
+        while (sets.size() > 1) {
+            auto primary = sets.back(); sets.pop_back();
+            auto secondary = sets.back(); sets.pop_back();
+            auto merged = merge(primary, secondary);
+            num_comp += NFordJohnson::cap[D];
+            sets.push_back(merged);
+            std::sort(sets.begin(), sets.end(), [](const std::vector<S>& lhs, const std::vector<S>& rhs) {
+                return lhs.back().sum - lhs.front().sum < rhs.back().sum - rhs.front().sum;
+                });
+            num_comp += (int)log2(sets.size() + 1.0 + 1e-8);
+            //dump(num_comp, sets);
+        }
+
+        std::vector<double> ans;
+        for (const auto& s : sets.back()) {
+            ans.push_back(s.sum);
+        }
+
+        auto cost = [&](const std::vector<double>& sums) {
+            double s = 0.0, ss = 0.0;
+            for (double x : sums) {
+                s += x;
+                ss += x * x;
+            }
+            auto m = s / D;
+            return 1 + (int)round(sqrt(ss / D - m * m) * 100);
+        };
+
+        //dump(num_comp, ans);
+
+        return { cost(ans), num_comp };
     }
 
 };
@@ -953,7 +1251,7 @@ void batch_execution() {
 //
 //    }
 
-    if (true) {
+    if (false) {
         constexpr int num_seeds = 10000;
 
         int progress = 0;
@@ -987,7 +1285,7 @@ void batch_execution() {
             std::ofstream ofs(format("../../tools_win/out/%04d.txt", seed));
             auto judge = std::make_shared<FileJudge>(ifs, ofs);
             Solver solver(judge);
-            dump(seed, solver.calc_oracle_score());
+            dump(seed, solver.calc_oracle_score_LPT());
         }
     }
 
@@ -1035,6 +1333,31 @@ void batch_execution() {
         }
     }
 
+    if (true) {
+        constexpr int num_seeds = 10000;
+        int progress = 0;
+        size_t nlpt = 0, slpt = 0;
+        size_t nldm = 0, sldm = 0;
+#pragma omp parallel for num_threads(8)
+        for (int seed = 0; seed < num_seeds; seed++) {
+            auto judge = std::make_shared<LocalJudge>(seed);
+            Solver solver(judge);
+            auto lpt = solver.calc_oracle_score_LPT().first;
+            auto ldm = solver.calc_oracle_score_LDM().first;
+#pragma omp critical(crit_sct)
+            {
+                (lpt < ldm ? nlpt : nldm)++;
+                slpt += lpt;
+                sldm += ldm;
+                progress++;
+                std::cerr << format(
+                    "\rprogress=%5d/%5d, nlpt=%5d, nldm=%5d, mlpt=%10.2f, mldm=%10.2f",
+                    progress, num_seeds, nlpt, nldm, (double)slpt / progress, (double)sldm / progress
+                );
+            }
+        }
+    }
+
 }
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
@@ -1048,10 +1371,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     cv::utils::logging::setLogLevel(cv::utils::logging::LogLevel::LOG_LEVEL_SILENT);
 #endif
 
-#if 0
-    std::ifstream ifs("../../tools_win/in/0015.txt");
+#if 1
+    std::ifstream ifs("../../tools_win/in/0002.txt");
     std::istream& in = ifs;
-    std::ofstream ofs("../../tools_win/out/0015.txt");
+    std::ofstream ofs("../../tools_win/out/0002.txt");
     std::ostream& out = ofs;
     auto judge = std::make_shared<FileJudge>(in, out);
 #else
@@ -1061,6 +1384,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 #endif
 
     Solver solver(judge);
+    dump(judge->N, judge->D, judge->Q);
+    std::cerr << solver.calc_oracle_score_LPT() << '\n';
+    std::cerr << solver.calc_oracle_score_LDM() << '\n';
+    exit(1);
     auto score = solver.solve();
 
     judge->comment(format("elapsed=%.2f ms, score=%d", timer.elapsed_ms(), score));

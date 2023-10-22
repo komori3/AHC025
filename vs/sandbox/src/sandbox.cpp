@@ -151,63 +151,436 @@ inline double get_temp(double stemp, double etemp, double t, double T) {
 
 
 
-double cdf(double x, double lambda) {
-    return 1.0 - exp(-lambda * x);
-}
-
-double xcdf(double prob, double lambda) {
-    double left = 0.0, right = 1e9;
-    while (right - left > 1e-3) {
-        double mid = (left + right) * 0.5;
-        double val = cdf(mid, lambda);
-        (val < prob ? left : right) = mid;
+void print_tableau(const std::vector<std::vector<double>>& tbl, const std::vector<int>& basis) {
+    assert(basis.size() + 1 == tbl.size());
+    constexpr int margin = 8;
+    const int nrows = (int)tbl.size();
+    const int ncols = (int)tbl.front().size();
+    std::string str;
+    // header
+    str += "   basis |";
+    for (int col = 0; col < ncols - 1; col++) {
+        auto n = std::to_string(col);
+        auto s = std::string(margin - n.size() - 1, ' ');
+        str += s + 'x' + n;
     }
-    return (left + right) * 0.5;
+    str += "       b";
+    str += '\n';
+    str += std::string(margin * (ncols + 1) + 2, '-') + '\n';
+    for (int row = 0; row < (int)basis.size(); row++) {
+        auto n = std::to_string(basis[row]);
+        auto s = std::string(margin - n.size() - 1, ' ');
+        str += s + 'x' + n + " |";
+        for (int col = 0; col < ncols; col++) {
+            str += format("%8.2f", tbl[row][col]);
+        }
+        str += '\n';
+    }
+    str += "       z |";
+    for (int col = 0; col < ncols; col++) {
+        str += format("%8.2f", tbl[nrows - 1][col]);
+    }
+    str += "\n\n";
+    std::cerr << str;
 }
 
-double calc_mean(double a, double b, double lambda) {
-    double mu = 1.0 / lambda;
-    return ((a + mu) * exp(-lambda * a) - (b + mu) * exp(-lambda * b));
+// min cx s.t. Ax=b, x_i>=0
+double simplex(
+    const std::vector<std::vector<double>>& A,
+    const std::vector<double>& b,
+    const std::vector<double>& c
+) {
+    constexpr double eps = 1e-8;
+    const int nrows = A.size() + 1;
+    const int ncols = A.front().size() + 1;
+    dump(nrows, ncols);
+
+    std::vector<std::vector<double>> tbl(nrows, std::vector<double>(ncols));
+    std::vector<int> basis(nrows - 1);
+    std::iota(basis.begin(), basis.end(), (int)(A.front().size() - A.size()));
+    dump(basis);
+
+    for (int row = 0; row < nrows - 1; row++) {
+        for (int col = 0; col < ncols - 1; col++) {
+            tbl[row][col] = A[row][col];
+        }
+        tbl[row][ncols - 1] = b[row];
+        if (b[row] < 0) { // if b_i<0
+            for (int col = 0; col < ncols; col++) {
+                tbl[row][col] *= -1.0;
+            }
+        }
+    }
+    for (int col = 0; col < ncols - 1; col++) {
+        tbl[nrows - 1][col] = c[col];
+    }
+
+    print_tableau(tbl, basis);
+
+    if (false) {
+        for (int row = 0; row < nrows - 1; row++) {
+            for (int col = 0; col < ncols; col++) {
+                tbl[nrows - 1][col] -= tbl[row][col];
+            }
+        }
+        for (const auto& t : tbl) std::cerr << t << '\n';
+        std::cerr << '\n';
+    }
+
+    while (true) {
+        const auto& zrow = tbl.back();
+
+        //const int pivot_col = (int)std::distance(zrow.begin(), std::min_element(zrow.begin(), zrow.end() - 1));
+        int pivot_col = std::numeric_limits<int>::max();
+        for (int col = 0; col < ncols - 1; col++) {
+            if (zrow[col] >= -eps) continue;
+            chmin(pivot_col, col);
+        }
+
+        dump(pivot_col);
+        //if (zrow[pivot_col] >= -eps) {
+        if (pivot_col == std::numeric_limits<int>::max()) {
+            // optimal
+            dump("optimal");
+            break;
+        }
+
+        int pivot_row = -1;
+        {
+            double lowest_increase = std::numeric_limits<double>::max();
+            int target_basis = std::numeric_limits<int>::max();
+            for (int row = 0; row < nrows - 1; row++) {
+                if (tbl[row][pivot_col] < eps) continue;
+                const double increase = tbl[row].back() / tbl[row][pivot_col];
+                if (abs(lowest_increase - increase) < eps && basis[row] < target_basis) {
+                    target_basis = basis[row];
+                    pivot_row = row;
+                }
+                else if (increase < lowest_increase) {
+                    lowest_increase = increase;
+                    target_basis = basis[row];
+                    pivot_row = row;
+                }
+                //if (chmin(lowest_increase, tbl[row].back() / tbl[row][pivot_col])) {
+                //    pivot_row = row;
+                //}
+            }
+            dump(pivot_row, lowest_increase);
+        }
+        if (pivot_row == -1) {
+            // infinite
+            dump("infinite");
+            break;
+        }
+        const double pivot_val = tbl[pivot_row][pivot_col];
+        for (int col = 0; col < ncols; col++) {
+            tbl[pivot_row][col] /= pivot_val;
+        }
+        
+        print_tableau(tbl, basis);
+
+        for (int row = 0; row < nrows; row++) {
+            if (row == pivot_row) continue;
+            const double coeff = -tbl[row][pivot_col];
+            for (int col = 0; col < ncols; col++) {
+                tbl[row][col] += tbl[pivot_row][col] * coeff;
+            }
+        }
+        basis[pivot_row] = pivot_col;
+
+        print_tableau(tbl, basis);
+    }
+
+    return tbl.back().back();
+}
+
+int simplex_sub(
+    std::vector<std::vector<double>>& tbl,
+    std::vector<int>& basis
+) {
+
+    constexpr double eps = 1e-8;
+    const int nrows = tbl.size();
+    const int ncols = tbl.front().size();
+
+    auto& zrow = tbl.back();
+
+    auto choose_pivot_col = [&]() {
+        int pivot_col = std::numeric_limits<int>::max();
+        for (int col = 0; col < ncols - 1; col++) {
+            if (zrow[col] >= -eps) continue;
+            if (col < pivot_col) pivot_col = col;
+        }
+        return pivot_col;
+    };
+
+    auto choose_pivot_row = [&](const int pivot_col) {
+        int pivot_row = -1;
+        double lowest_increase = std::numeric_limits<int>::max();
+        int target_basis = std::numeric_limits<int>::max();
+        for (int row = 0; row < nrows - 1; row++) {
+            if (tbl[row][pivot_col] < eps) continue;
+            const double increase = tbl[row].back() / tbl[row][pivot_col];
+            if (abs(lowest_increase - increase) < eps && basis[row] < target_basis) {
+                target_basis = basis[row];
+                pivot_row = row;
+            }
+            else if (increase < lowest_increase) {
+                lowest_increase = increase;
+                target_basis = basis[row];
+                pivot_row = row;
+            }
+        }
+        return pivot_row;
+    };
+
+    while (true) {
+
+        const int pivot_col = choose_pivot_col();
+        if (pivot_col == std::numeric_limits<int>::max()) {
+            //dump("optimal");
+            return 0;
+        }
+
+        const int pivot_row = choose_pivot_row(pivot_col);
+        if (pivot_row == -1) {
+            //dump("infinite");
+            return 1;
+        }
+
+        const double pivot_val = tbl[pivot_row][pivot_col];
+        for (int col = 0; col < ncols; col++) {
+            tbl[pivot_row][col] /= pivot_val;
+        }
+
+        //print_tableau(tbl, basis);
+
+        for (int row = 0; row < nrows; row++) {
+            if (row == pivot_row) continue;
+            const double coeff = tbl[row][pivot_col];
+            for (int col = 0; col < ncols; col++) {
+                tbl[row][col] -= tbl[pivot_row][col] * coeff;
+            }
+        }
+        
+        basis[pivot_row] = pivot_col;
+
+        //print_tableau(tbl, basis);
+    }
+
+    assert(false);
+    return -1;
+}
+
+void create_artificial_problem(
+    const std::vector<std::vector<double>>& A,
+    const std::vector<double>& b,
+    std::vector<std::vector<double>>& tbl,
+    std::vector<int>& basis
+) {
+    // 制約条件の数だけ人工変数を導入し、人工変数の和を最小化する人工問題を作成する
+    // 行数 = 制約条件数 + 1(目的関数)
+    const int nrows = A.size() + 1;
+    // 列数 = 元問題の変数の個数 + 人工変数の個数(制約条件数) + 1(定数項)
+    const int ncols = A.front().size() + A.size() + 1;
+    // simplex tableau
+    tbl = std::vector<std::vector<double>>(nrows, std::vector<double>(ncols));
+    // index of basic variables
+    basis = std::vector<int>(nrows - 1);
+    std::iota(basis.begin(), basis.end(), (int)A.front().size()); // initially artificial variables are selected
+    // number of constraints in the original problem
+    const int ncols_orig = (int)A.front().size();
+    // fill tableau
+    for (int row = 0; row < (int)A.size(); row++) {
+        // from original problem
+        for (int col = 0; col < (int)A.front().size(); col++) {
+            tbl[row][col] = A[row][col];
+        }
+        // constant
+        tbl[row][ncols - 1] = b[row];
+        // if constant < 0
+        if (tbl[row][ncols - 1] < 0) {
+            for (auto& x : tbl[row]) x *= -1.0;
+        }
+        // artificial variable
+        tbl[row][ncols_orig + row] = 1;
+    }
+    // objective function: minimize sum of artificial variables
+    for (int col = ncols_orig; col < ncols_orig + (int)A.size(); col++) {
+        tbl[nrows - 1][col] = 1;
+    }
+
+    //print_tableau(tbl, basis);
+
+    // create a dictionary with artificial variables as basic variables
+    for (int row = 0; row < (int)A.size(); row++) {
+        for (int col = 0; col < ncols; col++) {
+            tbl[nrows - 1][col] -= tbl[row][col];
+        }
+    }
+
+    //print_tableau(tbl, basis);
+}
+
+// min cx s.t. Ax=b, x_i>=0
+double simplex2(
+    const std::vector<std::vector<double>>& A,
+    const std::vector<double>& b,
+    const std::vector<double>& c
+) {
+    constexpr double eps = 1e-8;
+
+    std::vector<std::vector<double>> tbl;
+    std::vector<int> basis;
+
+    create_artificial_problem(A, b, tbl, basis);
+    
+    int res = simplex_sub(tbl, basis);
+    dump(res);
+    if (res) return -1;
+
+    bool feasible = abs(tbl.back().back()) < eps;
+
+    dump(feasible);
+    assert(feasible);
+
+    // TODO: 人工変数を基底から除去する操作
+
+    // remove artificial variables
+    for (auto& t : tbl) {
+        t.erase(t.begin() + A.front().size(), t.begin() + A.front().size() + A.size());
+    }
+    for (int col = 0; col < (int)c.size(); col++) {
+        tbl.back()[col] = c[col];
+    }
+
+    print_tableau(tbl, basis);
+
+    auto& zrow = tbl.back();
+    for (int pivot_row = 0; pivot_row < (int)A.size(); pivot_row++) {
+        const int pivot_col = basis[pivot_row];
+        assert(abs(tbl[pivot_row][pivot_col] - 1.0) < eps);
+        const double coeff = -zrow[pivot_col];
+        for (int col = 0; col < (int)tbl.front().size(); col++) {
+            zrow[col] += coeff * tbl[pivot_row][col];
+        }
+    }
+
+    print_tableau(tbl, basis);
+
+    res = simplex_sub(tbl, basis);
+    dump(res);
+
+    return -1;
+}
+
+bool is_feasible(
+    const std::vector<std::vector<double>>& A,
+    const std::vector<double>& b
+) {
+    constexpr double eps = 1e-8;
+    std::vector<std::vector<double>> tbl;
+    std::vector<int> basis;
+
+    create_artificial_problem(A, b, tbl, basis);
+
+    int res = simplex_sub(tbl, basis);
+    assert(res == 0); // 人工問題は実行可能解が必ずあるはずなので
+
+    return abs(tbl.back().back()) < eps;
+}
+
+template <typename T = int>
+T ipow(T x, T n) {
+    T ret = 1;
+    for (T i = 0; i < n; i++) ret *= x;
+    return ret;
 }
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 
-    constexpr int N = 100;
-    constexpr int K = 100;
-    constexpr int D = 2;
-    constexpr double lambda = 1e-5;
-    constexpr double thresh = 1e5 * N / D;
+    //std::vector<std::vector<double>> A({ 
+    //    {1,0,0,0,0,-1,0,0,0,-1},
+    //    {0,1,0,0,0,1,-1,0,0,1},
+    //    {0,0,1,0,0,0,1,-1,0,1},
+    //    {0,0,0,1,0,0,0,1,-1,0},
+    //    {0,0,0,0,1,0,0,0,1,-1}
+    //    });
+    //std::vector<double> b({ -1,1,1,-1,0 });
+    //std::vector<double> c({ 1,1,1,1,1,1,1,1,1,1 });
 
-    dump(N, D, lambda, thresh);
+    // 0<a0<a1<a2<a3<a4
+    std::vector<std::vector<double>> A({
+        {1,0,0,0,0},
+        {0,1,0,0,0},
+        {0,0,1,0,0},
+        {0,0,0,1,0},
+        {0,0,0,0,1}
+        });
 
-    std::mt19937_64 engine;
-    std::exponential_distribution<> dist(lambda);
+    Xorshift rnd(2);
+    std::vector<int> ws(A.size());
+    for (int i = 0; i < ws.size(); i++) ws[i] = rnd.next_int(1000);
+    dump(ws);
 
-    std::vector<double> sum_ws(K);
-    std::vector<double> sqsum_ws(K);
+    auto compare = [&] (const std::vector<int>& lhs, const std::vector<int>& rhs) {
+        int lsum = 0, rsum = 0;
+        for (int i : lhs) lsum += ws[i];
+        for (int i : rhs) rsum += ws[i];
+        return lsum <= rsum;
+    };
 
-    constexpr int num_trial = 10000;
-    for (int t = 0; t < num_trial; t++) {
-        std::vector<double> ws(K);
-        for (int i = 0; i < N; i++) {
-            double w = dist(engine);
-            ws[i % K] += (w > thresh) ? 0 : w;
-            i -= (w > thresh);
+    auto is_comparable = [&] (const std::vector<int>& lhs, const std::vector<int>& rhs) {
+        // sum(lhs) < sum(rhs) であるか？
+        std::vector<double> b(A.size());
+        for (int i : rhs) b[i] = 1;
+        for (int i : lhs) b[i] = -1;
+        return is_feasible(A, b);
+    };
+
+    int nmask = ipow(3, 5);
+    int ctr = 0, ncomp = 0;
+    std::vector<int> perm(nmask);
+    std::iota(perm.begin(), perm.end(), 0);
+    shuffle_vector(perm, rnd);
+    for (int mask : perm) {
+        std::vector<int> lhs, rhs;
+        int x = mask;
+        for (int i = 0; i < 5; i++) {
+            int r = x % 3;
+            x /= 3;
+            if (r == 1) lhs.push_back(i);
+            if (r == 2) rhs.push_back(i);
         }
-        std::sort(ws.begin(), ws.end());
-        for (int i = 0; i < K; i++) {
-            sum_ws[i] += ws[i];
-            sqsum_ws[i] += ws[i] * ws[i];
+        if (lhs.empty() || rhs.empty()) continue;
+        ctr++;
+        if (!is_comparable(lhs, rhs)) {
+            ncomp++;
+            dump(lhs, rhs);
+            for (int i = 0; i < A.size(); i++) {
+                A[i].push_back(0);
+            }
+            bool res = compare(lhs, rhs);
+            if (res) {
+                for (int i : rhs) A[i].back() = 1;
+                for (int i : lhs) A[i].back() = -1;
+            }
+            else {
+                for (int i : lhs) A[i].back() = 1;
+                for (int i : rhs) A[i].back() = -1;
+            }
         }
     }
 
-    for (int i = 0; i < K; i++) {
-        double mean = sum_ws[i] / num_trial;
-        double var = sqsum_ws[i] / num_trial - mean * mean;
-        double stdev = sqrt(var);
-        dump(i, mean, stdev);
-    }
+    dump(ctr, ncomp);
 
+    //std::vector<std::vector<double>> A({ {-1,-2,0},{1,4,2} });
+    //std::vector<double> b({ -12,20 });
+    //std::vector<double> c({ -2,-1,-1 });
+
+    //dump(is_feasible(A, b));
+
+    //simplex2(A, b, c);
 
     return 0;
 }
