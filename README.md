@@ -279,7 +279,7 @@ N, D に対して実験的に比較回数の上限 `cmp[N][D]` を求めてお�
 
 最終順位は 117/1085 でレート変動ゼロ　心が折れる
 
-<img src='img/stats.PNG'>
+<img src='img/stats.png'>
 
 [siman さんの統計情報のページ](https://siman-man.github.io/ahc_statistics/025/) を見ると順位の割にやたらと bests が多かった(上から数えて 9 番目)
 
